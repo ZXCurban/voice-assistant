@@ -67,4 +67,3 @@ alembic -c backend/alembic.ini upgrade head
 
 - `GET /health` is the only endpoint and does not touch DB/Redis.
 - Engine/Redis clients are lazy singletons: object creation does no I/O, safe in tests/CI.
-- No domain models, no frontend/mobile, no LLM/STT/TTS by design.
