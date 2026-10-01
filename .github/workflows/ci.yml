@@ -31,3 +31,6 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+      - name: Validate Docker build
+        run: docker build -t hackathon-skeleton:ci .

@@ -1,4 +1,6 @@
-.PHONY: install dev lint format typecheck test migrate revision up down
+# Canonical checks (mirrored in AGENTS.md and .github/workflows/ci.yml):
+#   ruff check backend | ruff format --check backend | mypy backend/app | pytest
+.PHONY: install dev lint format typecheck test migrate revision up down docker-build compose-config
 
 install:
 	pip install -e ".[dev]"
@@ -31,3 +33,9 @@ up:
 
 down:
 	docker compose down
+
+docker-build:
+	docker build -t hackathon-skeleton:local .
+
+compose-config:
+	docker compose config --quiet

@@ -269,16 +269,17 @@ Cover, where applicable:
 - validation;
 - important edge cases.
 
-Before considering a task complete, run:
+Before considering a task complete, run the canonical checks
+(same scopes as `Makefile` and CI):
 
 ```bash
-ruff check .
-ruff format --check .
-mypy .
+ruff check backend
+ruff format --check backend
+mypy backend/app
 pytest
 ```
 
-If the project provides a Makefile or other standard commands, follow those commands as well.
+Or via Make: `make lint`, `make typecheck`, `make test`.
 
 Never consider a task complete while required checks are failing.
 
@@ -334,9 +335,9 @@ chore: update dependencies
 Before pushing changes or creating a pull request, always run:
 
 ```bash
-ruff check .
-ruff format --check .
-mypy .
+ruff check backend
+ruff format --check backend
+mypy backend/app
 pytest
 ```
 
@@ -483,3 +484,50 @@ After completing a task, briefly report:
 - which checks were run;
 - the result of those checks;
 - anything that remains to be done.
+
+---
+
+## 17. Multi-Clinic Domain (MVP)
+
+This project is a multi-clinic voice-assistant backend. `Clinic` is the
+tenant: every business table (`specialties`, `departments`, `rooms`,
+`doctors`, `patients`, `appointments`, `clinic_schedules`,
+`doctor_schedules`, `schedule_exceptions`) carries `clinic_id`.
+
+Rules for any change touching domain code:
+
+1. **Tenant scope is explicit, not frameworked.** No TenantManager /
+   generic base repositories / UnitOfWork. Every repository function for
+   tenant-owned data takes `clinic_id` and filters by it. Cross-tenant
+   access returns `404` (never `403`, to avoid ID oracles).
+2. **Uniqueness is clinic-scoped.** `UNIQUE(clinic_id, name/code)` for
+   specialties, departments, room codes. Only `clinics.name` is global.
+   Specialty names are stored lowercased (case-insensitive uniqueness).
+3. **API layout.** `GET /health` stays at root (stable contract). Patient /
+   assistant API under `/api/v1` (collections nested as
+   `/clinics/{id}/...`, singletons take `?clinic_id=`). Management API
+   under `/api/v1/management`. Do not move endpoints between these
+   surfaces without explicit approval.
+4. **Time.** Appointments are UTC `TIMESTAMPTZ`; `clinics.timezone` is a
+   mandatory IANA name; weekly schedules are clinic-local wall-clock
+   intervals. Slot math lives in `services/availability.py` (pure,
+   unit-tested) — never in routers, schemas, or models.
+5. **Booking integrity.** `starts_at` must match the generated slot grid;
+   `ends_at` is computed server-side. The partial unique index
+   `uq_appointments_booked_slot ... WHERE status='booked'` is the final
+   arbiter against double booking — keep it, and map `IntegrityError`
+   to `409`. Do not rely on SELECT-then-INSERT alone.
+6. **Errors.** Services raise `NotFoundError` (→ 404), `ConflictError`
+   (→ 409), `ValueError` (→ 422); mapping lives in `api/errors.py`.
+   Default FastAPI validation errors are acceptable; no error envelope.
+7. **Rooms are informational** (no capacity checks); `reason` on
+   appointments is optional non-clinical free text. Do not grow these
+   into an EMR. No auth/RBAC in MVP — see the security note in README;
+   use synthetic data only.
+8. **Migrations vs seed.** Schema changes go through Alembic
+   (`backend/alembic/versions/`). Demo data lives only in
+   `app/db/seed_demo.py` (idempotent) — never inside migrations.
+9. **Tests.** Pure slot math → `tests/unit`; lifecycle / isolation /
+   exceptions / HTTP contracts → `tests/integration` (file-SQLite via
+   `db_session`/`api_client` fixtures; PG-only behavior verified
+   manually against `docker compose` Postgres).

@@ -13,10 +13,12 @@ dependencies = [
   "redis>=5.0",
   "pydantic>=2.0",
   "pydantic-settings>=2.0",
+  "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
 dev = [
+  "aiosqlite>=0.20",
   "httpx>=0.27",
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
@@ -61,16 +63,3 @@ testpaths = ["backend/tests"]
 pythonpath = ["backend"]
 asyncio_mode = "auto"
 addopts = "-q"
-
-[tool.coverage.run]
-source = ["backend/app"]
-branch = true
-
-[dependency-groups]
-dev = [
-  "httpx>=0.27",
-  "pytest>=8.0",
-  "pytest-asyncio>=0.23",
-  "ruff>=0.6",
-  "mypy>=1.11",
-]

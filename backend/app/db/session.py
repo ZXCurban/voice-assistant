@@ -1,4 +1,9 @@
-"""Async SQLAlchemy engine and session factory (no models, no business logic)."""
+"""Async SQLAlchemy engine and session factory (no models, no business logic).
+
+Decision: lazy module-level singletons. Creation does no I/O, so the app
+boots and tests run without live PostgreSQL. Kept intentionally instead
+of lifespan-state plumbing until a concrete need arises.
+"""
 
 from collections.abc import AsyncGenerator
 

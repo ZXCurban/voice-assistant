@@ -1,4 +1,8 @@
-"""Async Redis client holder (lazy, no business logic)."""
+"""Async Redis client holder (lazy, no business logic).
+
+Decision: lazy module-level singleton, same rationale as db.session.
+No I/O happens until the first Redis command.
+"""
 
 from redis.asyncio import Redis
 

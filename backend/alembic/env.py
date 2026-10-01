@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app.core.config import get_settings
-from app.models.base import Base
+from app.models import Base  # noqa: F401  (import all entities for autogenerate)
 
 config = context.config
 

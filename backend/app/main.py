@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.errors import register_exception_handlers
 from app.api.v1 import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -29,9 +30,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 def create_app() -> FastAPI:
-    """Build and configure the FastAPI application."""
+    """Build and configure the FastAPI application.
+
+    Public contract: GET /health stays at the root.
+    Settings.api_v1_prefix is reserved for future domain routers only.
+    """
     settings = get_settings()
     app = FastAPI(title=settings.app_name, debug=settings.app_debug, lifespan=lifespan)
+    register_exception_handlers(app)
     app.include_router(api_router)
     return app
 

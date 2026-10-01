@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     app_name: str = "hackathon-skeleton"
     app_env: str = "local"
     app_debug: bool = False
+    # Reserved for future domain endpoints. Not applied to GET /health,
+    # which stays at the root as a stable public contract.
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
 
