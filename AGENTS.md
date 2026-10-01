@@ -531,3 +531,9 @@ Rules for any change touching domain code:
    exceptions / HTTP contracts → `tests/integration` (file-SQLite via
    `db_session`/`api_client` fixtures; PG-only behavior verified
    manually against `docker compose` Postgres).
+10. **Assistant layer (`app/assistant/`).** `AssistantOrchestrator` is a
+    stateless facade over `app/services/*`: no SQLAlchemy queries, no
+    duplicated business rules, no ToolRegistry framework, no Redis, no
+    LLM/STT/TTS dependencies. New intents reuse existing services and
+    map errors to `AssistantResult` statuses. No new public HTTP
+    endpoints for the assistant without explicit approval.

@@ -5,6 +5,13 @@ touches PostgreSQL, services, or repositories — only these endpoints.
 All datetimes are UTC ISO-8601 (`...Z`); `date` params are `YYYY-MM-DD`
 in the **clinic's** timezone.
 
+> In-process alternative: the AI teammate may call
+> `AssistantOrchestrator.handle(session, AssistantRequest)` directly
+> instead of HTTP — same services, same rules, typed
+> request/result. See `docs/assistant-architecture.md` for the
+> clarification/confirmation contract. The table below stays the
+> contract for remote clients.
+
 ## Patient tools
 
 | Future tool | HTTP | Required | Optional | Returns | Errors |

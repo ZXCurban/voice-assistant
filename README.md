@@ -77,6 +77,13 @@ Voice-assistant mapping: see `docs/voice-map.md` (tool table, booking
 flow, ambiguity and error handling). Reproducible live demo:
 `make demo` (needs migrated + seeded DB and API on `:8000`).
 
+Assistant orchestration (for the AI teammate): `app/assistant/` —
+`AssistantRequest` in, `AssistantResult` out via `AssistantOrchestrator`
+(stateless, reuses `app/services/*`; no SQL, no business rules, no
+LLM/STT/TTS). Contract details: `docs/assistant-architecture.md`.
+Live orchestrator demo (real PG, no mocks):
+`DATABASE_URL=... python -m app.assistant.demo` from `backend/`.
+
 ## Core rules
 
 - **Tenant isolation:** every repository query filters by `clinic_id`.
