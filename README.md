@@ -139,3 +139,7 @@ log, and non-sequential IDs before handling real personal/medical data.
 - Redis client is wired (`db/redis.py`) but no service uses it yet;
   slot caching (60s TTL + invalidation on writes) is a documented
   Phase-2 step, not implemented.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
