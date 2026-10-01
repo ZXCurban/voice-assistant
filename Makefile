@@ -1,6 +1,6 @@
 # Canonical checks (mirrored in AGENTS.md and .github/workflows/ci.yml):
 #   ruff check backend | ruff format --check backend | mypy backend/app | pytest
-.PHONY: install dev lint format typecheck test migrate revision up down docker-build compose-config
+.PHONY: install dev lint format typecheck test migrate revision up down docker-build compose-config demo seed
 
 install:
 	pip install -e ".[dev]"
@@ -39,3 +39,9 @@ docker-build:
 
 compose-config:
 	docker compose config --quiet
+
+seed:
+	cd backend && python -m app.db.seed_demo
+
+demo:
+	python scripts/demo.py

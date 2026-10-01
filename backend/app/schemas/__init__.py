@@ -3,6 +3,7 @@
 from app.schemas.appointment import (
     AppointmentCreate,
     AppointmentOut,
+    AppointmentPatientRef,
     AppointmentReschedule,
 )
 from app.schemas.catalog import (
@@ -23,22 +24,27 @@ from app.schemas.patient import PatientCreate, PatientOut, PatientUpdate
 from app.schemas.schedule import (
     ClinicScheduleCreate,
     ClinicScheduleOut,
+    ClinicScheduleUpdate,
     DoctorScheduleCreate,
     DoctorScheduleOut,
+    DoctorScheduleUpdate,
     ScheduleExceptionCreate,
     ScheduleExceptionOut,
+    ScheduleExceptionUpdate,
 )
 from app.schemas.slot import SlotOut
 
 __all__ = [
     "AppointmentCreate",
     "AppointmentOut",
+    "AppointmentPatientRef",
     "AppointmentReschedule",
     "ClinicCreate",
     "ClinicOut",
     "ClinicUpdate",
     "ClinicScheduleCreate",
     "ClinicScheduleOut",
+    "ClinicScheduleUpdate",
     "DepartmentCreate",
     "DepartmentOut",
     "DepartmentUpdate",
@@ -47,6 +53,7 @@ __all__ = [
     "DoctorOut",
     "DoctorScheduleCreate",
     "DoctorScheduleOut",
+    "DoctorScheduleUpdate",
     "DoctorUpdate",
     "HealthResponse",
     "PatientCreate",
@@ -57,6 +64,7 @@ __all__ = [
     "RoomUpdate",
     "ScheduleExceptionCreate",
     "ScheduleExceptionOut",
+    "ScheduleExceptionUpdate",
     "SlotOut",
     "SpecialtyCreate",
     "SpecialtyOut",

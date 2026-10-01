@@ -21,6 +21,13 @@ def ensure_aware_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def coerce_utc(value: datetime | None) -> datetime | None:
+    """Treat a naive client-supplied datetime as UTC (list filters)."""
+    if value is None:
+        return None
+    return ensure_aware_utc(value)
+
+
 def validate_timezone(name: str) -> str:
     """Return stripped IANA name or raise ValueError (→ 422)."""
     cleaned = name.strip()

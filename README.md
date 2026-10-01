@@ -63,12 +63,19 @@ patients, slots (`/slots`, `/doctors/{id}/slots`), appointments
 (book/view/list/reschedule/cancel/complete).
 
 Management (`/api/v1/management`): clinics, specialties, departments,
-rooms, doctors, clinic/doctor schedules, schedule-exceptions.
+rooms, doctors, clinic/doctor schedules (create/update/remove),
+schedule-exceptions (create/update/remove).
 
 Conventions: collections nested as `/clinics/{id}/...`; singletons and
 search take `?clinic_id=`; appointment listing requires `patient_id` or
 `doctor_id`. Cross-tenant access returns `404`. Specialty names are
 stored lowercased. Room codes are unique per clinic, not globally.
+Doctor lists and appointments embed nested `doctor`/`specialty`/
+`patient`/`room` context for voice presentation.
+
+Voice-assistant mapping: see `docs/voice-map.md` (tool table, booking
+flow, ambiguity and error handling). Reproducible live demo:
+`make demo` (needs migrated + seeded DB and API on `:8000`).
 
 ## Core rules
 
@@ -110,7 +117,11 @@ Never put demo data in migrations — `app/db/seed_demo.py` only
 
 ## Security note (MVP has no auth)
 
-Anyone with network access can list/book/cancel. **Synthetic data only.**
+This API is a hackathon/demo backend. **It is not safe for real patient
+data. There is no authentication or authorization.** Anyone with network
+access can list/book/cancel. `clinic_id` is only an application-level
+tenant isolation mechanism for the demo, not a security boundary.
+**Synthetic data only.**
 Production needs authentication, per-clinic roles, rate limiting, audit
 log, and non-sequential IDs before handling real personal/medical data.
 

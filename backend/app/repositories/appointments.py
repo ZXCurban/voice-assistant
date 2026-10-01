@@ -4,15 +4,26 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.appointment import STATUS_BOOKED, Appointment
+from app.models.doctor import Doctor
+
+# Nested context for voice presentation; avoids lazy loads in async code.
+_APPOINTMENT_OPTIONS = (
+    selectinload(Appointment.doctor).selectinload(Doctor.specialty),
+    selectinload(Appointment.patient),
+    selectinload(Appointment.room),
+)
 
 
 async def get_appointment(
     session: AsyncSession, clinic_id: int, appointment_id: int
 ) -> Appointment | None:
-    stmt = select(Appointment).where(
-        Appointment.id == appointment_id, Appointment.clinic_id == clinic_id
+    stmt = (
+        select(Appointment)
+        .where(Appointment.id == appointment_id, Appointment.clinic_id == clinic_id)
+        .options(*_APPOINTMENT_OPTIONS)
     )
     return (await session.execute(stmt)).scalar_one_or_none()
 
@@ -35,6 +46,7 @@ async def list_appointments(
         .order_by(Appointment.starts_at, Appointment.id)
         .offset(offset)
         .limit(limit)
+        .options(*_APPOINTMENT_OPTIONS)
     )
     if patient_id is not None:
         stmt = stmt.where(Appointment.patient_id == patient_id)

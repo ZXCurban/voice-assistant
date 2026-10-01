@@ -6,7 +6,11 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 
 from app.api.deps import SessionDep
-from app.schemas.schedule import ScheduleExceptionCreate, ScheduleExceptionOut
+from app.schemas.schedule import (
+    ScheduleExceptionCreate,
+    ScheduleExceptionOut,
+    ScheduleExceptionUpdate,
+)
 from app.services import exceptions as exceptions_service
 
 router = APIRouter(prefix="/api/v1/management", tags=["management-exceptions"])
@@ -55,3 +59,19 @@ async def delete_exception(
     clinic_id: Annotated[int, Query(gt=0)],
 ) -> None:
     await exceptions_service.delete_exception(session, clinic_id, exception_id)
+
+
+@router.patch(
+    "/schedule-exceptions/{exception_id}",
+    response_model=ScheduleExceptionOut,
+    summary="Update a schedule exception",
+)
+async def update_exception(
+    session: SessionDep,
+    exception_id: int,
+    data: ScheduleExceptionUpdate,
+    clinic_id: Annotated[int, Query(gt=0)],
+) -> ScheduleExceptionOut:
+    return ScheduleExceptionOut.model_validate(
+        await exceptions_service.update_exception(session, clinic_id, exception_id, data)
+    )

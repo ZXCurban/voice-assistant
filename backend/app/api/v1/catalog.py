@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import SessionDep
 from app.schemas.catalog import DepartmentOut, RoomOut, SpecialtyOut
-from app.schemas.doctor import DoctorDetailOut, DoctorOut
+from app.schemas.doctor import DoctorDetailOut
 from app.services import catalog as catalog_service
 from app.services import doctors as doctors_service
 
@@ -60,8 +60,12 @@ async def list_rooms(
 
 @router.get(
     "/clinics/{clinic_id}/doctors",
-    response_model=list[DoctorOut],
+    response_model=list[DoctorDetailOut],
     summary="List clinic doctors",
+    description=(
+        "Doctors with nested specialty/department names so a voice "
+        "assistant can disambiguate same-name doctors without extra calls."
+    ),
 )
 async def list_doctors(
     session: SessionDep,
@@ -69,7 +73,7 @@ async def list_doctors(
     specialty_id: Annotated[int | None, Query(gt=0)] = None,
     department_id: Annotated[int | None, Query(gt=0)] = None,
     active_only: Annotated[bool, Query()] = True,
-) -> list[DoctorOut]:
+) -> list[DoctorDetailOut]:
     entities = await doctors_service.list_doctors(
         session,
         clinic_id,
@@ -77,13 +81,18 @@ async def list_doctors(
         department_id=department_id,
         active_only=active_only,
     )
-    return [DoctorOut.model_validate(e) for e in entities]
+    return [DoctorDetailOut.model_validate(e) for e in entities]
 
 
 @router.get(
     "/doctors/{doctor_id}",
     response_model=DoctorDetailOut,
     summary="Get doctor with specialty/department",
+    description=(
+        "Answers 'where does Dr. X see patients': department plus the "
+        "rooms/slots endpoints complete the picture. Always pass the "
+        "clinic_id the patient chose; wrong scope returns 404."
+    ),
 )
 async def get_doctor(
     session: SessionDep,

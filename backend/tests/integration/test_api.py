@@ -217,3 +217,135 @@ def test_public_catalog_and_health(api_client: TestClient) -> None:
     assert api_client.get(f"/api/v1/clinics/{cid}").json()["name"] == "Catalog Clinic"
     assert api_client.get(f"/api/v1/clinics/{cid}/doctors").json() == []
     assert api_client.get("/api/v1/clinics/999999").status_code == 404
+
+
+def test_voice_nesting_and_patch_endpoints(api_client: TestClient) -> None:
+    """Doctor list carries specialty names; appointments carry context; PATCH works."""
+    clinic = api_client.post(
+        "/api/v1/management/clinics", json=_clinic_payload("Nesting Clinic")
+    ).json()
+    cid = clinic["id"]
+    spec = api_client.post(
+        "/api/v1/management/specialties",
+        json={"clinic_id": cid, "name": "Cardiology"},
+    ).json()
+    dept = api_client.post(
+        "/api/v1/management/departments",
+        json={"clinic_id": cid, "name": "Internal"},
+    ).json()
+    doctor = api_client.post(
+        "/api/v1/management/doctors",
+        json={
+            "clinic_id": cid,
+            "full_name": "Jan Kowalski",
+            "specialty_id": spec["id"],
+            "department_id": dept["id"],
+        },
+    ).json()
+
+    # Doctor list includes nested specialty/department (disambiguation).
+    doctors = api_client.get(f"/api/v1/clinics/{cid}/doctors").json()
+    assert doctors[0]["specialty"]["name"] == "cardiology"
+    assert doctors[0]["department"]["name"] == "Internal"
+
+    for weekday in range(5):
+        api_client.post(
+            f"/api/v1/management/clinics/{cid}/schedule",
+            json={"weekday": weekday, "start_local": "08:00", "end_local": "20:00"},
+        )
+    sched = api_client.post(
+        f"/api/v1/management/doctors/{doctor['id']}/schedules?clinic_id={cid}",
+        json={
+            "weekday": 0,
+            "start_local": "09:00",
+            "end_local": "11:00",
+            "slot_minutes": 30,
+        },
+    ).json()
+
+    # PATCH doctor schedule: shrink the interval.
+    patched = api_client.patch(
+        f"/api/v1/management/doctor-schedules/{sched['id']}?clinic_id={cid}",
+        json={"end_local": "10:00"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["end_local"] == "10:00:00"
+
+    # PATCH clinic schedule: deactivate Monday → no slots that day.
+    week = api_client.get(f"/api/v1/management/clinics/{cid}/schedule").json()
+    monday_row = next(r for r in week if r["weekday"] == 0)
+    off = api_client.patch(
+        f"/api/v1/management/clinic-schedules/{monday_row['id']}?clinic_id={cid}",
+        json={"active": False},
+    )
+    assert off.status_code == 200
+
+    patient = api_client.post(
+        "/api/v1/patients",
+        json={"clinic_id": cid, "full_name": "Voice Patient", "phone": "+48222222222"},
+    ).json()
+    today = date.today()
+    delta = (0 - today.weekday()) % 7 or 7
+    while delta < 7:
+        delta += 7
+    monday = today + timedelta(days=delta)
+    empty = api_client.get(
+        f"/api/v1/doctors/{doctor['id']}/slots?clinic_id={cid}&date={monday}"
+    ).json()
+    assert empty == []
+
+    # Reactivate → slots back.
+    on = api_client.patch(
+        f"/api/v1/management/clinic-schedules/{monday_row['id']}?clinic_id={cid}",
+        json={"active": True},
+    )
+    assert on.status_code == 200
+    slots = api_client.get(
+        f"/api/v1/doctors/{doctor['id']}/slots?clinic_id={cid}&date={monday}"
+    ).json()
+    assert len(slots) == 2  # 09:00-10:00 @30 after the shrink
+
+    booking = api_client.post(
+        "/api/v1/appointments",
+        json={
+            "clinic_id": cid,
+            "doctor_id": doctor["id"],
+            "patient_id": patient["id"],
+            "starts_at": slots[0]["starts_at"],
+            "reason": "   ",
+        },
+    )
+    assert booking.status_code == 201, booking.text
+    body = booking.json()
+    # Nested voice context + whitespace-only reason normalized to null.
+    assert body["doctor"]["full_name"] == "Jan Kowalski"
+    assert body["specialty"]["name"] == "cardiology"
+    assert body["patient"]["full_name"] == "Voice Patient"
+    assert body["reason"] is None
+    assert body["starts_at"].endswith("Z") or "+" in body["starts_at"]
+
+    # Exception PATCH: create custom hours, switch to day off.
+    exc = api_client.post(
+        "/api/v1/management/schedule-exceptions",
+        json={
+            "clinic_id": cid,
+            "doctor_id": doctor["id"],
+            "date": str(monday),
+            "kind": "custom_hours",
+            "start_local": "12:00",
+            "end_local": "14:00",
+        },
+    )
+    assert exc.status_code == 201, exc.text
+    eid = exc.json()["id"]
+    switched = api_client.patch(
+        f"/api/v1/management/schedule-exceptions/{eid}?clinic_id={cid}",
+        json={"kind": "day_off"},
+    )
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["kind"] == "day_off"
+    assert switched.json()["start_local"] is None
+    gone = api_client.get(
+        f"/api/v1/doctors/{doctor['id']}/slots?clinic_id={cid}&date={monday}"
+    ).json()
+    assert gone == []

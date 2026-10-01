@@ -6,7 +6,11 @@ from fastapi import APIRouter, Query, status
 
 from app.api.deps import SessionDep
 from app.schemas.clinic import ClinicCreate, ClinicOut, ClinicUpdate
-from app.schemas.schedule import ClinicScheduleCreate, ClinicScheduleOut
+from app.schemas.schedule import (
+    ClinicScheduleCreate,
+    ClinicScheduleOut,
+    ClinicScheduleUpdate,
+)
 from app.services import clinics as clinics_service
 from app.services import schedules as schedules_service
 
@@ -65,9 +69,31 @@ async def create_clinic_schedule(
     response_model=list[ClinicScheduleOut],
     summary="List clinic opening hours",
 )
-async def list_clinic_schedules(session: SessionDep, clinic_id: int) -> list[ClinicScheduleOut]:
-    entities = await schedules_service.list_clinic_schedules(session, clinic_id)
+async def list_clinic_schedules(
+    session: SessionDep,
+    clinic_id: int,
+    active_only: Annotated[bool, Query()] = True,
+) -> list[ClinicScheduleOut]:
+    entities = await schedules_service.list_clinic_schedules(
+        session, clinic_id, active_only=active_only
+    )
     return [ClinicScheduleOut.model_validate(e) for e in entities]
+
+
+@router.patch(
+    "/clinic-schedules/{schedule_id}",
+    response_model=ClinicScheduleOut,
+    summary="Update a clinic opening interval",
+)
+async def update_clinic_schedule(
+    session: SessionDep,
+    schedule_id: int,
+    data: ClinicScheduleUpdate,
+    clinic_id: Annotated[int, Query(gt=0)],
+) -> ClinicScheduleOut:
+    return ClinicScheduleOut.model_validate(
+        await schedules_service.update_clinic_schedule(session, clinic_id, schedule_id, data)
+    )
 
 
 @router.delete(

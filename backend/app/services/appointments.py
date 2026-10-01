@@ -19,7 +19,7 @@ from app.services import availability as availability_service
 from app.services import doctors as doctors_service
 from app.services import patients as patients_service
 from app.services.catalog import get_room
-from app.services.common import ensure_aware_utc, require_clinic
+from app.services.common import coerce_utc, ensure_aware_utc, require_clinic
 
 
 async def _slot_lookup(
@@ -62,6 +62,7 @@ async def book_appointment(session: AsyncSession, data: AppointmentCreate) -> Ap
         session, data.clinic_id, data.doctor_id, starts_at, clinic.timezone
     )
 
+    reason = data.reason.strip() if data.reason else None
     appointment = Appointment(
         clinic_id=data.clinic_id,
         doctor_id=data.doctor_id,
@@ -70,7 +71,7 @@ async def book_appointment(session: AsyncSession, data: AppointmentCreate) -> Ap
         starts_at=starts_at,
         ends_at=ends_at,
         status=STATUS_BOOKED,
-        reason=data.reason.strip() if data.reason else None,
+        reason=reason or None,
     )
     session.add(appointment)
     try:
@@ -81,10 +82,11 @@ async def book_appointment(session: AsyncSession, data: AppointmentCreate) -> Ap
         await session.rollback()
         raise ConflictError("slot unavailable") from exc
     await session.commit()
-    await session.refresh(appointment)
-    appointment.starts_at = ensure_aware_utc(appointment.starts_at)
-    appointment.ends_at = ensure_aware_utc(appointment.ends_at)
-    return appointment
+    # Re-fetch with nested relations loaded (refresh() would expire them
+    # and trigger lazy loads, which are illegal in async code).
+    loaded = await appointments_repo.get_appointment(session, data.clinic_id, appointment.id)
+    assert loaded is not None
+    return loaded
 
 
 async def get_appointment(
@@ -120,8 +122,8 @@ async def list_appointments(
         clinic_id,
         patient_id=patient_id,
         doctor_id=doctor_id,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=coerce_utc(date_from),
+        date_to=coerce_utc(date_to),
         status=status,
         limit=limit,
         offset=offset,
@@ -160,10 +162,9 @@ async def reschedule_appointment(
     old.status = STATUS_CANCELLED
     await session.flush()
     await session.commit()
-    await session.refresh(replacement)
-    replacement.starts_at = ensure_aware_utc(replacement.starts_at)
-    replacement.ends_at = ensure_aware_utc(replacement.ends_at)
-    return replacement
+    loaded = await appointments_repo.get_appointment(session, clinic_id, replacement.id)
+    assert loaded is not None
+    return loaded
 
 
 async def _transition(
@@ -176,8 +177,9 @@ async def _transition(
     appointment.status = to
     await session.flush()
     await session.commit()
-    await session.refresh(appointment)
-    return appointment
+    loaded = await appointments_repo.get_appointment(session, clinic_id, appointment.id)
+    assert loaded is not None
+    return loaded
 
 
 async def cancel_appointment(

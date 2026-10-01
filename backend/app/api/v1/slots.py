@@ -12,7 +12,18 @@ from app.services import availability as availability_service
 router = APIRouter(prefix="/api/v1", tags=["slots"])
 
 
-@router.get("/slots", response_model=list[SlotOut], summary="Search available slots")
+@router.get(
+    "/slots",
+    response_model=list[SlotOut],
+    summary="Search available slots",
+    description=(
+        "Voice-assistant entry point for 'I need a dermatologist tomorrow'. "
+        "Pass clinic_id + date (YYYY-MM-DD, clinic-local) + exactly one of "
+        "specialty_id or doctor_id. Returns UTC starts_at/ends_at pairs with "
+        "doctor, specialty and room context. Empty list = fully booked or "
+        "closed (check clinic schedule / exceptions)."
+    ),
+)
 async def search_slots(
     session: SessionDep,
     clinic_id: Annotated[int, Query(gt=0)],
@@ -35,6 +46,10 @@ async def search_slots(
     "/doctors/{doctor_id}/slots",
     response_model=list[SlotOut],
     summary="Available slots of one doctor on a date",
+    description=(
+        "Day grid for one doctor after clinic hours, exceptions and booked "
+        "visits are applied. Use after the patient picks a doctor."
+    ),
 )
 async def doctor_slots(
     session: SessionDep,

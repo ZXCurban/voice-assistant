@@ -16,6 +16,11 @@ router = APIRouter(prefix="/api/v1", tags=["patients"])
     response_model=PatientOut,
     status_code=status.HTTP_201_CREATED,
     summary="Register patient in a clinic",
+    description=(
+        "Creates a per-clinic patient profile (no medical data). "
+        "The same person at another clinic is a separate record — "
+        "always use the clinic_id of the chosen clinic."
+    ),
 )
 async def create_patient(session: SessionDep, data: PatientCreate) -> PatientOut:
     patient = await patients_service.create_patient(session, data)

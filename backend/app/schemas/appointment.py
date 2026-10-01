@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from app.schemas.slot import SlotDoctorRef, SlotRoomRef, SlotSpecialtyRef
+
 
 class AppointmentCreate(BaseModel):
     clinic_id: int = Field(gt=0)
@@ -20,7 +22,19 @@ class AppointmentReschedule(BaseModel):
     new_starts_at: AwareDatetime
 
 
+class AppointmentPatientRef(BaseModel):
+    id: int
+    full_name: str
+
+
 class AppointmentOut(BaseModel):
+    """Booking with human-readable nested context for voice presentation.
+
+    Nested blocks are additive context (ids stay top-level). Built
+    manually in the router (not model_validate) because specialty
+    resolves through doctor.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -34,3 +48,7 @@ class AppointmentOut(BaseModel):
     reason: str | None
     created_at: datetime
     updated_at: datetime
+    doctor: SlotDoctorRef
+    specialty: SlotSpecialtyRef
+    patient: AppointmentPatientRef
+    room: SlotRoomRef | None = None

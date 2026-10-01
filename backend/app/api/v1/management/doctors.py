@@ -6,7 +6,11 @@ from fastapi import APIRouter, Query, status
 
 from app.api.deps import SessionDep
 from app.schemas.doctor import DoctorCreate, DoctorOut, DoctorUpdate
-from app.schemas.schedule import DoctorScheduleCreate, DoctorScheduleOut
+from app.schemas.schedule import (
+    DoctorScheduleCreate,
+    DoctorScheduleOut,
+    DoctorScheduleUpdate,
+)
 from app.services import doctors as doctors_service
 from app.services import schedules as schedules_service
 
@@ -70,9 +74,28 @@ async def list_doctor_schedules(
     session: SessionDep,
     doctor_id: int,
     clinic_id: Annotated[int, Query(gt=0)],
+    active_only: Annotated[bool, Query()] = True,
 ) -> list[DoctorScheduleOut]:
-    entities = await schedules_service.list_doctor_schedules(session, clinic_id, doctor_id)
+    entities = await schedules_service.list_doctor_schedules(
+        session, clinic_id, doctor_id, active_only=active_only
+    )
     return [DoctorScheduleOut.model_validate(e) for e in entities]
+
+
+@router.patch(
+    "/doctor-schedules/{schedule_id}",
+    response_model=DoctorScheduleOut,
+    summary="Update a doctor working interval",
+)
+async def update_doctor_schedule(
+    session: SessionDep,
+    schedule_id: int,
+    data: DoctorScheduleUpdate,
+    clinic_id: Annotated[int, Query(gt=0)],
+) -> DoctorScheduleOut:
+    return DoctorScheduleOut.model_validate(
+        await schedules_service.update_doctor_schedule(session, clinic_id, schedule_id, data)
+    )
 
 
 @router.delete(

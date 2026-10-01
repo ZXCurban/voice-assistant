@@ -31,6 +31,12 @@ class ClinicScheduleOut(BaseModel):
     updated_at: datetime
 
 
+class ClinicScheduleUpdate(BaseModel):
+    start_local: time | None = None
+    end_local: time | None = None
+    active: bool | None = None
+
+
 class DoctorScheduleCreate(BaseModel):
     weekday: int = Field(ge=0, le=6)
     start_local: time
@@ -61,6 +67,30 @@ class DoctorScheduleOut(BaseModel):
     active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class DoctorScheduleUpdate(BaseModel):
+    """Partial update. room_id=None means unchanged (no detach in MVP)."""
+
+    start_local: time | None = None
+    end_local: time | None = None
+    slot_minutes: int | None = Field(default=None)
+    room_id: int | None = Field(default=None, gt=0)
+    active: bool | None = None
+
+    @model_validator(mode="after")
+    def _check_slot(self) -> "DoctorScheduleUpdate":
+        if self.slot_minutes is not None and self.slot_minutes not in (
+            5,
+            10,
+            15,
+            20,
+            30,
+            45,
+            60,
+        ):
+            raise ValueError("slot_minutes must be one of 5,10,15,20,30,45,60")
+        return self
 
 
 class ScheduleExceptionCreate(BaseModel):
@@ -97,3 +127,13 @@ class ScheduleExceptionOut(BaseModel):
     reason: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ScheduleExceptionUpdate(BaseModel):
+    """Partial update. Switching kind to day_off clears times; date/doctor
+    are immutable (they form the uniqueness scope)."""
+
+    kind: str | None = Field(default=None, pattern="^(day_off|custom_hours)$")
+    start_local: time | None = None
+    end_local: time | None = None
+    reason: str | None = Field(default=None, max_length=300)
