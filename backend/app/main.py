@@ -2,8 +2,10 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.errors import register_exception_handlers
 from app.api.v1 import api_router
@@ -39,6 +41,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, debug=settings.app_debug, lifespan=lifespan)
     register_exception_handlers(app)
     app.include_router(api_router)
+    app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"))
     return app
 
 

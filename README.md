@@ -53,6 +53,23 @@ uvicorn app.main:app --reload --app-dir backend
 pytest
 ```
 
+## Local AI chat (prototype)
+
+Conversational layer only (no booking tools wired yet). Requires a
+local `llama-server` with an OpenAI-compatible API:
+
+```bash
+# 1. llama-server with Qwen3-4B (Q4_K_M GGUF, ~2.5 GB RAM)
+llama-server -m <path>/Qwen3-4B-Q4_K_M.gguf --port 8080 -c 4096
+# 2. backend (uses LLM_* env vars, see .env.example)
+LLM_BASE_URL=http://127.0.0.1:8080 uvicorn app.main:app --app-dir backend --port 8001
+# 3. browser
+http://localhost:8001/static/chat.html
+```
+
+Direct API check: `POST /api/v1/chat {"message": "..."}` (optional
+`conversation_id` continues the dialogue; history is in-memory only).
+
 ## API surfaces
 
 `GET /health` stays at root. Everything else under `/api/v1`.

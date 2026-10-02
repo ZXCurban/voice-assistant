@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/app"
     redis_url: str = "redis://localhost:6379/0"
 
+    # Local LLM (llama-server, OpenAI-compatible HTTP). No secrets here.
+    llm_base_url: str = "http://127.0.0.1:8080"
+    llm_model: str = "clinic-assistant"
+    llm_timeout_s: float = 120.0
+    llm_max_tokens: int = 512
+    llm_temperature: float = 0.3
+
 
 @lru_cache
 def get_settings() -> Settings:

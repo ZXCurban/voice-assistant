@@ -6,7 +6,7 @@ live under /api/v1 (patient-facing) and /api/v1/management.
 
 from fastapi import APIRouter
 
-from app.api.v1 import appointments, catalog, clinics, patients, slots
+from app.api.v1 import appointments, catalog, chat, clinics, patients, slots
 from app.api.v1.health import router as health_router
 from app.api.v1.management import management_router
 
@@ -18,3 +18,4 @@ api_router.include_router(patients.router)
 api_router.include_router(slots.router)
 api_router.include_router(appointments.router)
 api_router.include_router(management_router)
+api_router.include_router(chat.router)
