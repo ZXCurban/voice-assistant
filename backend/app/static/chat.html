@@ -8,7 +8,9 @@
   body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f5; }
   #app { max-width: 640px; margin: 0 auto; background: #fff; min-height: 100vh;
          display: flex; flex-direction: column; }
-  header { padding: 12px 16px; border-bottom: 1px solid #e4e4e7; font-weight: 600; }
+  header { padding: 12px 16px; border-bottom: 1px solid #e4e4e7; font-weight: 600;
+           display: flex; align-items: center; justify-content: space-between; }
+  #newchat { padding: 6px 12px; font-size: 14px; }
   #log { flex: 1; padding: 16px; overflow-y: auto; }
   .msg { margin: 8px 0; padding: 8px 12px; border-radius: 8px; max-width: 85%;
          white-space: pre-wrap; }
@@ -22,7 +24,7 @@
 </head>
 <body>
 <div id="app">
-  <header>AI-консьерж клиники</header>
+  <header><span>AI-консьерж клиники</span><button id="newchat" type="button">Новый чат</button></header>
   <div id="log"></div>
   <form id="form">
     <input id="input" type="text" placeholder="Напишите сообщение..." autocomplete="off">
@@ -45,6 +47,14 @@ function add(text, cls) {
 }
 
 add('Здравствуйте! Я AI-консьерж клиники. Чем могу помочь?', 'bot');
+
+document.getElementById('newchat').addEventListener('click', () => {
+  conversationId = null;
+  localStorage.removeItem('conversation_id');
+  log.innerHTML = '';
+  add('Здравствуйте! Я AI-консьерж клиники. Чем могу помочь?', 'bot');
+  input.focus();
+});
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
