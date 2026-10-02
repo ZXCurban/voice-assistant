@@ -15,4 +15,7 @@ WORKDIR /code/backend
 
 EXPOSE 8000
 
+# Migrate + seed on every start (both idempotent), then run the server.
+# docker-compose.yml overrides CMD with --reload for local development.
+ENTRYPOINT ["sh", "entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

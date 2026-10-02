@@ -1,6 +1,6 @@
 """Conversational AI endpoints (local LLM + backend tools)."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.ai import service as chat_service
 from app.ai.schemas import ChatRequest, ChatResponse
@@ -19,8 +19,11 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
         "doctors, slots, booking) instead of inventing facts."
     ),
 )
-async def chat(request: ChatRequest, session: SessionDep) -> ChatResponse:
+async def chat(body: ChatRequest, session: SessionDep, http_request: Request) -> ChatResponse:
     """Run a chat turn through the LLM tool loop."""
     return await chat_service.chat(
-        message=request.message, conversation_id=request.conversation_id, session=session
+        message=body.message,
+        conversation_id=body.conversation_id,
+        session=session,
+        is_disconnected=http_request.is_disconnected,
     )

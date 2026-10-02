@@ -38,11 +38,20 @@ Layering: `api → services → repositories → models/db`. No imports upward.
 
 ```bash
 cp .env.example .env
+docker compose up --build
+# The api container migrates the schema and loads the idempotent demo
+# seed on startup, so this single command is enough for a fresh clone.
+# API: http://localhost:8000/docs ; health: http://localhost:8000/health
+# chat UI: http://localhost:8000/static/chat.html (needs an LLM server, see below)
+```
+
+Manual path (same result, step by step):
+
+```bash
 docker compose up --build -d db redis
 alembic -c backend/alembic.ini upgrade head
 DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/app" \
   python -m app.db.seed_demo   # run with cwd=backend; idempotent
-# API: http://localhost:8000/docs ; health: http://localhost:8000/health
 ```
 
 Local run without Docker:
@@ -60,13 +69,21 @@ Requires any OpenAI-compatible chat-completions server
 (`llama-server`, vLLM, Ollama, …):
 
 ```bash
-# 1. llama-server with Qwen3-4B (Q4_K_M GGUF, ~2.5 GB RAM)
-llama-server -m <path>/Qwen3-4B-Q4_K_M.gguf --port 8080 -c 4096
+# 1. llama-server with Qwen3-4B (Q4_K_M GGUF, ~2.5 GB RAM).
+#    Needs a recent llama.cpp (Qwen3 chat template with thinking support),
+#    enough threads, and -n >= 512 so tool calls are not truncated.
+llama-server -m <path>/Qwen3-4B-Q4_K_M.gguf --port 8080 -c 4096 -t 8 -n 512
 # 2. backend (uses LLM_* env vars, see .env.example)
 LLM_BASE_URL=http://127.0.0.1:8080 uvicorn app.main:app --app-dir backend --port 8001
 # 3. browser
 http://localhost:8001/static/chat.html
 ```
+
+Honest latency note: on CPU one model turn takes tens of seconds to minutes
+(Qwen3-4B generates a few tokens/sec; every assistant turn is 1+ full
+generations). Smalltalk is instant (answered without the model), closing the
+tab aborts the loop, and slow turns surface as `504` with a retry hint —
+but for a snappy demo you want a GPU-backed server or a faster model.
 
 Model swaps are config-only (`LLM_BASE_URL`/`LLM_MODEL`/`LLM_ENABLE_THINKING`/
 `LLM_TOOL_CHOICE`): prompts (`app/ai/prompts.py`), tools (`app/ai/tools.py`)
@@ -79,6 +96,9 @@ then `find_clinics` ranks nearest-first by the `city`/`address` query
 
 Direct API check: `POST /api/v1/chat {"message": "..."}` (optional
 `conversation_id` continues the dialogue; history is in-memory only).
+Smalltalk (`привет`, `кто ты`, …) answers instantly even with no model
+running; anything else needs the LLM server, otherwise the API returns
+`502 LLM server unavailable`.
 
 ## API surfaces
 

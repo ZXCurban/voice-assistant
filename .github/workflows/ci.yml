@@ -7,6 +7,20 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +45,14 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+      - name: Migrate and seed on real Postgres
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/app
+        run: |
+          alembic -c backend/alembic.ini upgrade head
+          alembic -c backend/alembic.ini check
+          cd backend && python -m app.db.seed_demo
 
       - name: Validate Docker build
         run: docker build -t hackathon-skeleton:ci .

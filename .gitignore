@@ -17,9 +17,8 @@ htmlcov/
 # Env
 .env
 
-# Alembic
-backend/alembic/versions/*.py
-!backend/alembic/versions/.gitkeep
+# Alembic revisions ARE tracked (backend/alembic/versions/*.py): a fresh
+# clone must run `alembic upgrade head` with zero local generation.
 
 # Docker / data
 pgdata/

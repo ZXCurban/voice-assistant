@@ -52,6 +52,10 @@ class AssistantContext(BaseModel):
     selected_specialty_id: int | None = Field(default=None, gt=0)
     selected_doctor_id: int | None = Field(default=None, gt=0)
     selected_slot: AwareDatetime | None = None
+    # Last user-mentioned city/address query (for find_clinics ranking).
+    # The dialogue layer backfills it from message text so the model
+    # cannot lose it between turns; explicit args always win.
+    city: str | None = Field(default=None, max_length=200)
 
 
 class AssistantRequest(BaseModel):

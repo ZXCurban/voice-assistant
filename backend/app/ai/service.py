@@ -11,6 +11,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from typing import Any
 
@@ -23,6 +24,7 @@ from app.ai.schemas import ChatResponse
 from app.ai.tools import TOOLS, execute_tool
 from app.assistant.schemas import AssistantContext
 from app.core.config import get_settings
+from app.services import geo as geo_service
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +32,11 @@ logger = logging.getLogger(__name__)
 # always-prepended system prompt. In-memory only: restarts drop history.
 # Kept small so the dialogue fits the local model's context window.
 MAX_TURNS = 5
-# Safety caps for one user turn. Iterations cover the 7-day slot scan
-# (one find_slots per day) plus the final answer.
-MAX_TOOL_ITERATIONS = 8
+# Safety cap for one user turn. Day-by-day slot scans run server-side inside
+# find_nearest_slots (ONE tool call), so a turn never legitimately needs
+# more: typically 1-3 calls (find_clinics + slots + book preview).
+# Kept low because each iteration is a full local-model generation.
+MAX_TOOL_ITERATIONS = 6
 # Backstop only: slot lists are already capped to 8 in execute_tool.
 MAX_TOOL_RESULT_CHARS = 2500
 
@@ -90,6 +94,9 @@ def _update_context(name: str, result: dict[str, Any], context: AssistantContext
             doc_id = _as_int(doc.get("id"))
             if doc_id is not None:
                 context.selected_doctor_id = doc_id
+    matched_city = details.get("matched_city")
+    if isinstance(matched_city, str) and matched_city:
+        context.city = matched_city
     appointment = details.get("appointment")
     if isinstance(appointment, dict):
         patient = appointment.get("patient")
@@ -150,6 +157,26 @@ def _trim(history: list[dict[str, Any]]) -> None:
         del history[:overflow]
 
 
+def _remembered_city(history: list[dict[str, Any]], context: AssistantContext) -> str | None:
+    """Best-known city query: latest user message wins, context is fallback.
+
+    Deterministic backfill so find_clinics keeps the user's city even when
+    the model forgets to pass it. The freshest mention updates the context.
+    """
+    for entry in reversed(history):
+        if entry.get("role") != "user":
+            continue
+        content = entry.get("content")
+        if not isinstance(content, str):
+            continue
+        matched = geo_service.canonical_city(content)
+        if matched is not None:
+            context.city = matched
+            return matched
+        break  # only the latest user message counts, then context fallback
+    return context.city
+
+
 def _system_prompt() -> str:
     """System prompt with today's date so the model resolves relative dates."""
     today = date.today()
@@ -161,9 +188,18 @@ def _system_prompt() -> str:
 
 
 async def chat(
-    message: str, conversation_id: str | None = None, *, session: AsyncSession
+    message: str,
+    conversation_id: str | None = None,
+    *,
+    session: AsyncSession,
+    is_disconnected: Callable[[], Awaitable[bool]] | None = None,
 ) -> ChatResponse:
-    """Run one user turn through the tool loop, return the final reply."""
+    """Run one user turn through the tool loop, return the final reply.
+
+    `is_disconnected` (e.g. Starlette's request.is_disconnected) aborts the
+    loop between iterations so a closed browser tab stops burning
+    local-model generations.
+    """
     settings = get_settings()
     active_id = conversation_id or uuid.uuid4().hex
     history = _history(active_id)
@@ -180,6 +216,9 @@ async def chat(
     client = build_client(settings)
     reply = "Не получилось обработать запрос, попробуйте переформулировать, пожалуйста."
     for _ in range(MAX_TOOL_ITERATIONS):
+        if is_disconnected is not None and await is_disconnected():
+            logger.info("client gone, aborting tool loop")
+            break
         started = time.monotonic()
         completion = await client.complete_with_tools(
             messages=[{"role": "system", "content": _system_prompt()}, *history],
@@ -201,9 +240,16 @@ async def chat(
             }
         )
         for call in completion.tool_calls:
-            result = await execute_tool(
-                session, call.name, call.arguments, context=_context(active_id)
-            )
+            call_args = dict(call.arguments)
+            if (
+                call.name == "find_clinics"
+                and "city" not in call_args
+                and "address" not in call_args
+            ):
+                remembered = _remembered_city(history, _context(active_id))
+                if remembered is not None:
+                    call_args["city"] = remembered
+            result = await execute_tool(session, call.name, call_args, context=_context(active_id))
             _update_context(call.name, result, _context(active_id))
             history.append(
                 {

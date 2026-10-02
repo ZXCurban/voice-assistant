@@ -255,6 +255,7 @@ def test_chat_endpoint_success_and_unavailable(
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.ai import service as service_module
+    from app.ai.client import LlmTimeoutError
     from app.ai.schemas import ChatResponse
 
     async def fake_chat(
@@ -262,8 +263,9 @@ def test_chat_endpoint_success_and_unavailable(
         conversation_id: str | None = None,
         *,
         session: AsyncSession | None = None,
+        is_disconnected: object = None,
     ) -> ChatResponse:
-        _ = (message, session)
+        _ = (message, session, is_disconnected)
         return ChatResponse(conversation_id=conversation_id or "abc", message="hi", model="m")
 
     async def fake_down(
@@ -271,9 +273,20 @@ def test_chat_endpoint_success_and_unavailable(
         conversation_id: str | None = None,
         *,
         session: AsyncSession | None = None,
+        is_disconnected: object = None,
     ) -> ChatResponse:
-        _ = (message, conversation_id, session)
+        _ = (message, conversation_id, session, is_disconnected)
         raise LlmUnavailableError()
+
+    async def fake_slow(
+        message: str,
+        conversation_id: str | None = None,
+        *,
+        session: AsyncSession | None = None,
+        is_disconnected: object = None,
+    ) -> ChatResponse:
+        _ = (message, conversation_id, session, is_disconnected)
+        raise LlmTimeoutError()
 
     app = create_app()
     monkeypatch.setattr(service_module, "chat", fake_chat)
@@ -289,3 +302,9 @@ def test_chat_endpoint_success_and_unavailable(
     with TestClient(app) as client:
         down = client.post("/api/v1/chat", json={"message": "hi"})
         assert down.status_code == 502
+
+    monkeypatch.setattr(service_module, "chat", fake_slow)
+    with TestClient(app) as client:
+        slow = client.post("/api/v1/chat", json={"message": "hi"})
+        assert slow.status_code == 504
+        assert "слишком долго" in slow.json()["detail"]

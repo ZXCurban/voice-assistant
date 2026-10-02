@@ -24,8 +24,19 @@ async def _unprocessable(_: Request, exc: Exception) -> JSONResponse:
 
 async def _llm_error(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, LlmError)
-    status = 504 if isinstance(exc, LlmTimeoutError) else 502
-    return JSONResponse(status_code=status, content={"detail": exc.message})
+    if isinstance(exc, LlmTimeoutError):
+        # Local CPU inference can take minutes per turn: say so in Russian
+        # and nudge toward shorter messages instead of leaking internals.
+        return JSONResponse(
+            status_code=504,
+            content={
+                "detail": (
+                    "Модель отвечает слишком долго (локальный сервер перегружен). "
+                    "Попробуйте отправить более короткое сообщение."
+                )
+            },
+        )
+    return JSONResponse(status_code=502, content={"detail": exc.message})
 
 
 def register_exception_handlers(app: FastAPI) -> None:

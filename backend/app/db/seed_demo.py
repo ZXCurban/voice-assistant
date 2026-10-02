@@ -322,6 +322,27 @@ async def _clinic_exists(session: AsyncSession, name: str) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+async def _ensure_geo(session: AsyncSession) -> None:
+    """Backfill city/coordinates on demo clinics created before geo existed.
+
+    Fresh databases get geo at creation time; this only patches rows that
+    predate the geo columns. Idempotent and safe to run on every start.
+    """
+    targets = {
+        "Przychodnia Srodmiescie": ("Warszawa", 52.2297, 21.0122),
+        "Clinica Atlantica": ("Lisboa", 38.7223, -9.1393),
+    }
+    for name, (city, latitude, longitude) in targets.items():
+        result = await session.execute(select(Clinic).where(Clinic.name == name))
+        clinic = result.scalar_one_or_none()
+        if clinic is not None and clinic.city is None:
+            clinic.city = city
+            clinic.latitude = latitude
+            clinic.longitude = longitude
+            print(f"seed: backfilled geo for {name}")
+    await session.commit()
+
+
 async def main() -> None:
     engine = get_engine()
     factory = async_sessionmaker(bind=engine, expire_on_commit=False)
@@ -349,6 +370,7 @@ async def main() -> None:
             await _book_demo_appointment(
                 session, refs["clinic_id"], refs["doctor_id"], refs["patient_id"]
             )
+        await _ensure_geo(session)
     await engine.dispose()
 
 
