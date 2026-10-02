@@ -55,8 +55,9 @@ pytest
 
 ## Local AI chat (prototype)
 
-Conversational layer only (no booking tools wired yet). Requires a
-local `llama-server` with an OpenAI-compatible API:
+Conversational layer (LLM tool loop over `AssistantOrchestrator`).
+Requires any OpenAI-compatible chat-completions server
+(`llama-server`, vLLM, Ollama, …):
 
 ```bash
 # 1. llama-server with Qwen3-4B (Q4_K_M GGUF, ~2.5 GB RAM)
@@ -66,6 +67,15 @@ LLM_BASE_URL=http://127.0.0.1:8080 uvicorn app.main:app --app-dir backend --port
 # 3. browser
 http://localhost:8001/static/chat.html
 ```
+
+Model swaps are config-only (`LLM_BASE_URL`/`LLM_MODEL`/`LLM_ENABLE_THINKING`/
+`LLM_TOOL_CHOICE`): prompts (`app/ai/prompts.py`), tools (`app/ai/tools.py`)
+and the orchestrator contract carry no model-specific tokens.
+Smalltalk (`привет`, `кто ты`, `что умеешь`, …) is answered instantly by
+`app/ai/fastpath.py` without calling the model; symptom messages
+(`болит нога`) trigger one triage question first (age + city/address),
+then `find_clinics` ranks nearest-first by the `city`/`address` query
+(`app/services/geo.py`; clinics carry optional `city`/`latitude`/`longitude`).
 
 Direct API check: `POST /api/v1/chat {"message": "..."}` (optional
 `conversation_id` continues the dialogue; history is in-memory only).

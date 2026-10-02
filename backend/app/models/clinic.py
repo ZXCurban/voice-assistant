@@ -26,6 +26,11 @@ class Clinic(Base):
     name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Optional geo for "nearest clinic" ranking (see services/geo.py).
+    # All nullable: old rows and old API payloads keep working.
+    city: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(nullable=True)
+    longitude: Mapped[float | None] = mapped_column(nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # IANA timezone name, e.g. "Europe/Warsaw". Mandatory: schedules are
     # interpreted in clinic-local time, appointments stored as UTC.

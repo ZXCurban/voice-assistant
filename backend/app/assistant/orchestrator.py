@@ -6,7 +6,8 @@ rules, race protection and tenant isolation stay in the services layer.
 No SQLAlchemy queries here beyond what services already encapsulate.
 """
 
-from datetime import datetime
+from datetime import date as date_type
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -35,6 +36,7 @@ from app.services import availability as availability_service
 from app.services import catalog as catalog_service
 from app.services import clinics as clinics_service
 from app.services import doctors as doctors_service
+from app.services import geo as geo_service
 from app.services import patients as patients_service
 from app.services.common import ensure_aware_utc
 
@@ -155,6 +157,15 @@ class AssistantOrchestrator:
             return request.context.patient_id
         return None
 
+    async def _ensure_patient(
+        self, session: AsyncSession, clinic_id: int, full_name: str, phone: str
+    ) -> tuple[Any, int]:
+        """Find by phone or register; returns (patient, patient_id)."""
+        patient, _ = await patients_service.get_or_create_patient(
+            session, clinic_id, full_name, phone
+        )
+        return patient, patient.id
+
     async def _resolve_specialty(
         self, session: AsyncSession, clinic_id: int, request: AssistantRequest
     ) -> Specialty | AssistantResult:
@@ -245,7 +256,9 @@ class AssistantOrchestrator:
             "find_doctors": self._find_doctors,
             "get_doctor": self._get_doctor,
             "find_slots": self._find_slots,
+            "find_nearest_slots": self._find_nearest_slots,
             "create_patient": self._create_patient,
+            "find_patient": self._find_patient,
             "get_patient": self._get_patient,
             "book_appointment": self._book_appointment,
             "get_appointment": self._get_appointment,
@@ -268,13 +281,16 @@ class AssistantOrchestrator:
     async def _find_clinics(
         self, session: AsyncSession, request: AssistantRequest
     ) -> AssistantResult:
-        del request
         clinics = await clinics_service.list_clinics(session, active_only=True)
-        return _ok(
-            "OK",
-            f"Found {len(clinics)} clinics.",
-            {"clinics": [ClinicOut.model_validate(c).model_dump(mode="json") for c in clinics]},
-        )
+        query = request.city or request.address
+        ranked, matched_city = geo_service.rank_clinics(clinics, query)
+        details: dict[str, Any] = {
+            "clinics": [ClinicOut.model_validate(c).model_dump(mode="json") for c in ranked]
+        }
+        if query is not None:
+            details["matched_city"] = matched_city
+            details["sorted_by"] = "city" if matched_city else "none"
+        return _ok("OK", f"Found {len(ranked)} clinics.", details)
 
     async def _find_specialties(
         self, session: AsyncSession, request: AssistantRequest
@@ -327,14 +343,10 @@ class AssistantOrchestrator:
             return doctor
         return _ok("OK", doctor.full_name, {"doctor": _doctor_candidate(doctor)})
 
-    async def _find_slots(
-        self, session: AsyncSession, request: AssistantRequest
-    ) -> AssistantResult:
-        clinic_id = self._clinic_id(request)
-        if clinic_id is None:
-            return _clarify("CLINIC_REQUIRED", "No clinic was specified.")
-        if request.date is None:
-            return _clarify("DATE_REQUIRED", "No date was specified.")
+    async def _resolve_slot_target(
+        self, session: AsyncSession, clinic_id: int, request: AssistantRequest
+    ) -> tuple[int | None, int | None] | AssistantResult:
+        """Resolve (doctor_id, specialty_id); exactly one must be set."""
         doctor_id = request.doctor_id
         specialty_id = request.specialty_id
         if doctor_id is None and request.doctor_name is not None:
@@ -355,6 +367,20 @@ class AssistantOrchestrator:
                 "SPECIALTY_OR_DOCTOR_REQUIRED",
                 "Neither specialty nor doctor was specified.",
             )
+        return doctor_id, specialty_id
+
+    async def _find_slots(
+        self, session: AsyncSession, request: AssistantRequest
+    ) -> AssistantResult:
+        clinic_id = self._clinic_id(request)
+        if clinic_id is None:
+            return _clarify("CLINIC_REQUIRED", "No clinic was specified.")
+        if request.date is None:
+            return _clarify("DATE_REQUIRED", "No date was specified.")
+        target = await self._resolve_slot_target(session, clinic_id, request)
+        if isinstance(target, AssistantResult):
+            return target
+        doctor_id, specialty_id = target
         slots = await availability_service.search_slots(
             session, clinic_id, request.date, specialty_id=specialty_id, doctor_id=doctor_id
         )
@@ -372,6 +398,43 @@ class AssistantOrchestrator:
                 "clinic_id": clinic_id,
                 "slots": [s.model_dump(mode="json") for s in slots],
             },
+        )
+
+    async def _find_nearest_slots(
+        self, session: AsyncSession, request: AssistantRequest
+    ) -> AssistantResult:
+        """Scan day by day from a start date, return the first day with slots."""
+        clinic_id = self._clinic_id(request)
+        if clinic_id is None:
+            return _clarify("CLINIC_REQUIRED", "No clinic was specified.")
+        target = await self._resolve_slot_target(session, clinic_id, request)
+        if isinstance(target, AssistantResult):
+            return target
+        doctor_id, specialty_id = target
+        start = request.date or date_type.today() + timedelta(days=1)
+        days = request.days_ahead or 10
+        checked: list[str] = []
+        for offset in range(days):
+            day = start + timedelta(days=offset)
+            checked.append(day.isoformat())
+            slots = await availability_service.search_slots(
+                session, clinic_id, day, specialty_id=specialty_id, doctor_id=doctor_id
+            )
+            if slots:
+                return _ok(
+                    "OK",
+                    f"Found {len(slots)} available slots on {day.isoformat()}.",
+                    {
+                        "clinic_id": clinic_id,
+                        "date": day.isoformat(),
+                        "slots": [s.model_dump(mode="json") for s in slots],
+                    },
+                )
+        return AssistantResult(
+            status="not_found",
+            code="NO_SLOTS_AVAILABLE",
+            message=f"No available slots in the next {days} days.",
+            details={"clinic_id": clinic_id, "checked_dates": checked, "slots": []},
         )
 
     async def _get_patient(
@@ -449,6 +512,25 @@ class AssistantOrchestrator:
             {"patient": PatientOut.model_validate(patient).model_dump(mode="json")},
         )
 
+    async def _find_patient(
+        self, session: AsyncSession, request: AssistantRequest
+    ) -> AssistantResult:
+        """Lookup by phone for voice flows («моя запись» → identify first)."""
+        clinic_id = self._clinic_id(request)
+        if clinic_id is None:
+            return _clarify("CLINIC_REQUIRED", "No clinic was specified.")
+        if not request.phone:
+            return _clarify("PHONE_REQUIRED", "No phone was specified for patient lookup.")
+        try:
+            patient = await patients_service.get_patient_by_phone(session, clinic_id, request.phone)
+        except NotFoundError as exc:
+            return _not_found(exc.message)
+        return _ok(
+            "OK",
+            patient.full_name,
+            {"patient": PatientOut.model_validate(patient).model_dump(mode="json")},
+        )
+
     # -- mutating flows (confirmation-gated) -------------------------------
 
     async def _book_appointment(
@@ -459,7 +541,16 @@ class AssistantOrchestrator:
             return _clarify("CLINIC_REQUIRED", "No clinic was specified.")
         patient_id = self._patient_id(request)
         if patient_id is None:
-            return _clarify("PATIENT_REQUIRED", "No patient was specified.")
+            if request.full_name is not None and request.phone is not None:
+                _, patient_id = await self._ensure_patient(
+                    session, clinic_id, request.full_name, request.phone
+                )
+            else:
+                return _clarify(
+                    "PATIENT_REQUIRED",
+                    "No patient was specified: copy full_name and phone from the "
+                    "dialogue history into this call (ask the user only if absent).",
+                )
         doctor = await self._resolve_doctor(session, clinic_id, request)
         if isinstance(doctor, AssistantResult):
             return doctor

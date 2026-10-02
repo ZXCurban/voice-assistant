@@ -44,7 +44,10 @@ Backend (this repo):
   `clinic_id`, `patient_id`, `specialty_id`/`specialty_name`,
   `doctor_id`/`doctor_name`, `appointment_id`, `date` (clinic-local day),
   `starts_at`/`new_starts_at` (tz-aware), `reason`, patient fields,
-  `confirmed`, `context`.
+  `confirmed`, `context`, plus optional `city`/`address` for
+  `find_clinics` ranking (nearest-first via `services/geo.py`; absent →
+  original order, `details` gains `matched_city`/`sorted_by` only when
+  a query was given).
 - `AssistantResult`: `status` (`success` | `need_clarification` |
   `not_found` | `conflict` | `invalid_input` |
   `confirmation_required`), `code` (stable machine string),

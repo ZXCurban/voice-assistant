@@ -15,6 +15,9 @@ async def create_clinic(session: AsyncSession, data: ClinicCreate) -> Clinic:
         name=data.name.strip(),
         description=data.description,
         address=data.address,
+        city=data.city,
+        latitude=data.latitude,
+        longitude=data.longitude,
         phone=data.phone,
         timezone=validate_timezone(data.timezone),
         active=True,
@@ -50,6 +53,12 @@ async def update_clinic(session: AsyncSession, clinic_id: int, data: ClinicUpdat
         clinic.description = data.description
     if data.address is not None:
         clinic.address = data.address
+    if data.city is not None:
+        clinic.city = data.city
+    if data.latitude is not None:
+        clinic.latitude = data.latitude
+    if data.longitude is not None:
+        clinic.longitude = data.longitude
     if data.phone is not None:
         clinic.phone = data.phone
     if data.timezone is not None:

@@ -21,12 +21,24 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/app"
     redis_url: str = "redis://localhost:6379/0"
 
-    # Local LLM (llama-server, OpenAI-compatible HTTP). No secrets here.
+    # Local LLM (OpenAI-compatible HTTP: llama-server, vLLM, Ollama, …).
+    # The model name is config only — prompts/tools carry no model-specific
+    # tokens, so swapping models is a config change, not a code change.
+    # No secrets here.
     llm_base_url: str = "http://127.0.0.1:8080"
     llm_model: str = "clinic-assistant"
-    llm_timeout_s: float = 120.0
+    llm_timeout_s: float = 300.0
     llm_max_tokens: int = 512
-    llm_temperature: float = 0.3
+    llm_temperature: float = 0.1
+    # Payload dialect selector (only "openai-compatible" is implemented;
+    # new dialects plug in via app.ai.client without touching prompts).
+    llm_provider: str = "openai-compatible"
+    # Hybrid reasoning models (e.g. Qwen3) need an explicit flag to put
+    # tokens into `content` instead of `reasoning_content`. Templates that
+    # do not know this variable ignore it, so leaving it off is safe for
+    # other models; set true only for models where you want thinking on.
+    llm_enable_thinking: bool = False
+    llm_tool_choice: str = "auto"
 
 
 @lru_cache

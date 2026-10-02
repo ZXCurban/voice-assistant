@@ -22,6 +22,7 @@ in the **clinic's** timezone.
 | `list_doctors` | `GET /api/v1/clinics/{id}/doctors` | `clinic_id` (path) | `specialty_id`, `department_id`, `active_only` | doctors **with nested specialty/department names** (disambiguation) | `404` bad filter scope |
 | `get_doctor` | `GET /api/v1/doctors/{id}?clinic_id=` | `doctor_id`, `clinic_id` | — | doctor + specialty + department | `404` (incl. wrong clinic) |
 | `find_available_slots` | `GET /api/v1/slots?clinic_id=&date=` | `clinic_id`, `date`, exactly one of `specialty_id`/`doctor_id` | `limit` | slots: `doctor`, `specialty`, `starts_at`, `ends_at` (UTC), `room` | `404` bad scope / no doctors, `422` bad date, `409` inactive clinic/doctor |
+| `find_nearest_slots` (assistant intent + LLM tool, no separate HTTP route — loops `find_slots` server-side) | — | `clinic_id`, one of `specialty_id`/`specialty_name`/`doctor_id`/`doctor_name`, optional `date` (default tomorrow), `days_ahead` (default 10) | — | first date with `slots` + `date`, or `not_found`/`NO_SLOTS_AVAILABLE` with `checked_dates` | same as `find_slots` |
 | `get_doctor_slots` | `GET /api/v1/doctors/{id}/slots?clinic_id=&date=` | same minus specialty | — | same | same |
 | `create_patient` | `POST /api/v1/patients` | `clinic_id`, `full_name`, `phone` | `birth_date` (past) | patient | `404` clinic, `422` validation |
 | `get_patient` | `GET /api/v1/patients/{id}?clinic_id=` | `patient_id`, `clinic_id` | — | patient | `404` |

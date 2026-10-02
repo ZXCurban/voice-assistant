@@ -42,6 +42,29 @@ async def get_patient(session: AsyncSession, clinic_id: int, patient_id: int) ->
     return patient
 
 
+async def get_patient_by_phone(session: AsyncSession, clinic_id: int, phone: str) -> Patient:
+    """Lookup for voice flows: exact phone match, clinic-scoped."""
+    await require_clinic(session, clinic_id)
+    patient = await patients_repo.get_patient_by_phone(session, clinic_id, phone)
+    if patient is None:
+        raise NotFoundError("patient not found")
+    return patient
+
+
+async def get_or_create_patient(
+    session: AsyncSession, clinic_id: int, full_name: str, phone: str
+) -> tuple[Patient, bool]:
+    """Find by phone or register. Returns (patient, created)."""
+    await require_clinic(session, clinic_id)
+    existing = await patients_repo.get_patient_by_phone(session, clinic_id, phone)
+    if existing is not None:
+        return existing, False
+    created = await create_patient(
+        session, PatientCreate(clinic_id=clinic_id, full_name=full_name, phone=phone)
+    )
+    return created, True
+
+
 async def update_patient(
     session: AsyncSession, clinic_id: int, patient_id: int, data: PatientUpdate
 ) -> Patient:

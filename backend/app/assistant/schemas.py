@@ -16,6 +16,8 @@ AssistantIntent = Literal[
     "find_doctors",
     "get_doctor",
     "find_slots",
+    "find_nearest_slots",
+    "find_patient",
     "create_patient",
     "get_patient",
     "book_appointment",
@@ -59,6 +61,10 @@ class AssistantRequest(BaseModel):
 
     intent: AssistantIntent
     clinic_id: int | None = Field(default=None, gt=0)
+    # Free-form city/address query for find_clinics ranking ("nearest clinic").
+    # Optional: absent → original order. Model-neutral, validated like the rest.
+    city: str | None = Field(default=None, min_length=2, max_length=200)
+    address: str | None = Field(default=None, min_length=2, max_length=500)
     patient_id: int | None = Field(default=None, gt=0)
     specialty_id: int | None = Field(default=None, gt=0)
     specialty_name: str | None = Field(default=None, min_length=2, max_length=150)
@@ -67,6 +73,8 @@ class AssistantRequest(BaseModel):
     appointment_id: int | None = Field(default=None, gt=0)
     # Clinic-local day for slot search (YYYY-MM-DD in clinic timezone).
     date: date_type | None = None
+    # How many days ahead to scan in find_nearest_slots (default 10, max 30).
+    days_ahead: int | None = Field(default=None, ge=1, le=30)
     # Booking / reschedule target instant (must be tz-aware UTC).
     starts_at: AwareDatetime | None = None
     new_starts_at: AwareDatetime | None = None
