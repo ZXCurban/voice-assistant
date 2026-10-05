@@ -88,3 +88,18 @@ def test_splits_disjoint_and_cover_full():
     assert len(parts["calibration"]) == 240
     assert len(parts["validation"]) == 80
     assert len(parts["test"]) == 80
+
+
+def test_v2_total_and_frozen_test_core():
+    rows = _load("clinic_intents_v2.jsonl")
+    assert len(rows) == 600, len(rows)
+    ids = [r.id for r in rows]
+    assert len(set(ids)) == len(ids)
+    v1_test = {r.id for r in _load("split_test.jsonl")}
+    v2_test = {r.id for r in _load("split_test_v2.jsonl")}
+    assert v1_test <= v2_test, "frozen v1 test core must survive in v2 test"
+    assert len(_load("split_calibration_v2.jsonl")) == 360
+    assert len(_load("split_validation_v2.jsonl")) == 120
+    assert len(v2_test) == 120
+    with_ctx = [r for r in rows if r.context]
+    assert len(with_ctx) >= 20, "follow-up items need explicit context"

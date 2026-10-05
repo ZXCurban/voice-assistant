@@ -13,6 +13,9 @@ class EvalItem(BaseModel):
     expected_tool: str | None = None
     category: str
     notes: str = ""
+    # Optional prior-turn context for follow-up items (v2). When present,
+    # harnesses must supply it (FRIDA with_context state, LLM history).
+    context: str | None = None
 
 
 class EvalPrediction(BaseModel):

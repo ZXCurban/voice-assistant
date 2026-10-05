@@ -48,7 +48,7 @@ from app.services.frida_router import (  # noqa: E402
 
 DATA_DIR = ROOT / "backend" / "tests" / "eval" / "data"
 RESULTS_DIR = ROOT / "backend" / "tests" / "eval" / "results"
-DATASET_VERSION = "clinic_intents_v1"
+DATASET_VERSIONS = {"v1": "clinic_intents_v1", "v2": "clinic_intents_v2"}
 
 INTENT_TO_WORKFLOW = {
     "book_appointment": "booking",
@@ -180,11 +180,13 @@ def heuristic_predict(text: str) -> tuple[str, bool, bool]:
     return intent, needs_human, needs_clar
 
 
-def load_items(split: str) -> list[EvalItem]:
+def load_items(split: str, dataset: str = "v1") -> list[EvalItem]:
+    prefix = DATASET_VERSIONS[dataset]
     if split == "all":
-        path = DATA_DIR / f"{DATASET_VERSION}.jsonl"
+        path = DATA_DIR / f"{prefix}.jsonl"
     else:
-        path = DATA_DIR / f"split_{split}.jsonl"
+        suffix = "" if dataset == "v1" else "_v2"
+        path = DATA_DIR / f"split_{split}{suffix}.jsonl"
     return [
         EvalItem(**json.loads(line))
         for line in path.read_text(encoding="utf-8").splitlines()
@@ -215,7 +217,10 @@ def get_router() -> FridaRouter:
 def predict_frida(item: EvalItem, router: FridaRouter) -> tuple[EvalPrediction, Any]:
     from app.services.frida_router import FridaDecision  # local import for typing
 
-    state = build_frida_state(item.text)
+    if item.context:
+        state = build_frida_state(item.text, previous_context=item.context, mode="with_context")
+    else:
+        state = build_frida_state(item.text)
     decision: FridaDecision = router.decide(state)
     return (
         EvalPrediction(
@@ -236,9 +241,15 @@ def predict_frida(item: EvalItem, router: FridaRouter) -> tuple[EvalPrediction, 
 
 
 def run(
-    model: str, split: str, limit: int | None, thr_i: float, thr_h: float, thr_c: float
+    model: str,
+    split: str,
+    limit: int | None,
+    thr_i: float,
+    thr_h: float,
+    thr_c: float,
+    dataset: str = "v1",
 ) -> dict:
-    items = load_items(split)
+    items = load_items(split, dataset)
     if limit:
         items = items[:limit]
     router = get_router() if model in ("frida", "assisted") else None
@@ -275,25 +286,26 @@ def run(
     return {"items": items, "preds": preds, "metrics": metrics}
 
 
-def save(model: str, split: str, result: dict, extra: dict) -> Path:
+def save(model: str, split: str, result: dict, extra: dict, dataset: str = "v1") -> Path:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    with open(RESULTS_DIR / f"{model}_{split}.jsonl", "w", encoding="utf-8") as f:
+    tag = f"{model}_{split}" if dataset == "v1" else f"{model}_{split}_{dataset}"
+    with open(RESULTS_DIR / f"{tag}.jsonl", "w", encoding="utf-8") as f:
         for p in result["preds"]:
             f.write(p.model_dump_json(ensure_ascii=False) + "\n")
     summary = {
         "model": model,
         "split": split,
-        "dataset_version": DATASET_VERSION,
+        "dataset_version": DATASET_VERSIONS[dataset],
         "frida_pinned": f"ai-forever/FRIDA-Decisions@{FRIDA_VERSION_PIN}",
         "timestamp_utc": stamp,
         "seed": 42,
         "metrics": result["metrics"],
         **extra,
     }
-    with open(RESULTS_DIR / f"{model}_{split}_summary.json", "w", encoding="utf-8") as f:
+    with open(RESULTS_DIR / f"{tag}_summary.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
-    return RESULTS_DIR / f"{model}_{split}_summary.json"
+    return RESULTS_DIR / f"{tag}_summary.json"
 
 
 def tune(split: str) -> dict:
@@ -301,7 +313,10 @@ def tune(split: str) -> dict:
     router = get_router()
     decisions = []
     for it in items:
-        state = build_frida_state(it.text)
+        if it.context:
+            state = build_frida_state(it.text, previous_context=it.context, mode="with_context")
+        else:
+            state = build_frida_state(it.text)
         decisions.append((it, router.decide(state)))
     best = None
     grid = {
@@ -353,6 +368,8 @@ def main() -> None:
     ap.add_argument("--thr-human", type=float, default=DEFAULT_HUMAN_THRESHOLD)
     ap.add_argument("--thr-clarify", type=float, default=DEFAULT_CLARIFY_THRESHOLD)
     ap.add_argument("--tune", action="store_true")
+    ap.add_argument("--dataset", default="v1", choices=["v1", "v2"])
+    ap.add_argument("--seed-note", default="", help="free-form run note stored in summary")
     args = ap.parse_args()
     if args.tune:
         best = tune(args.split if args.split != "all" else "validation")
@@ -361,7 +378,13 @@ def main() -> None:
             json.dump(best, f, ensure_ascii=False, indent=2)
         return
     result = run(
-        args.model, args.split, args.limit, args.thr_intent, args.thr_human, args.thr_clarify
+        args.model,
+        args.split,
+        args.limit,
+        args.thr_intent,
+        args.thr_human,
+        args.thr_clarify,
+        args.dataset,
     )
     path = save(
         args.model,
@@ -372,8 +395,10 @@ def main() -> None:
                 "intent": args.thr_intent,
                 "human": args.thr_human,
                 "clarify": args.thr_clarify,
-            }
+            },
+            "note": args.seed_note,
         },
+        args.dataset,
     )
     print(json.dumps(result["metrics"], ensure_ascii=False, indent=2))
     print(f"saved {path}")
