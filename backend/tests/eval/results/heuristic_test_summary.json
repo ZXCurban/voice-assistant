@@ -1,0 +1,183 @@
+{
+  "model": "heuristic",
+  "split": "test",
+  "dataset_version": "clinic_intents_v1",
+  "frida_pinned": "ai-forever/FRIDA-Decisions@v0.3.0",
+  "timestamp_utc": "2026-10-05T15:22:56.265644+00:00",
+  "seed": 42,
+  "metrics": {
+    "n": 80,
+    "intent_accuracy": 0.65,
+    "intent_macro_f1": 0.6597,
+    "per_class": {
+      "appointment_status": {
+        "precision": 1.0,
+        "recall": 0.8889,
+        "f1": 0.9412,
+        "support": 9
+      },
+      "book_appointment": {
+        "precision": 0.5,
+        "recall": 0.6,
+        "f1": 0.5455,
+        "support": 15
+      },
+      "cancel_appointment": {
+        "precision": 0.6,
+        "recall": 0.6,
+        "f1": 0.6,
+        "support": 5
+      },
+      "clinic_information": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 4
+      },
+      "doctor_information": {
+        "precision": 0.5,
+        "recall": 0.1667,
+        "f1": 0.25,
+        "support": 6
+      },
+      "doctor_schedule": {
+        "precision": 0.7143,
+        "recall": 0.7143,
+        "f1": 0.7143,
+        "support": 7
+      },
+      "operator": {
+        "precision": 1.0,
+        "recall": 0.5625,
+        "f1": 0.72,
+        "support": 16
+      },
+      "reschedule_appointment": {
+        "precision": 0.8182,
+        "recall": 0.8182,
+        "f1": 0.8182,
+        "support": 11
+      },
+      "unclear": {
+        "precision": 0.25,
+        "recall": 0.5714,
+        "f1": 0.3478,
+        "support": 7
+      }
+    },
+    "confusion": {
+      "appointment_status": {
+        "appointment_status": 8,
+        "cancel_appointment": 1
+      },
+      "book_appointment": {
+        "book_appointment": 9,
+        "unclear": 4,
+        "doctor_information": 1,
+        "doctor_schedule": 1
+      },
+      "cancel_appointment": {
+        "cancel_appointment": 3,
+        "book_appointment": 2
+      },
+      "clinic_information": {
+        "clinic_information": 4
+      },
+      "doctor_information": {
+        "unclear": 3,
+        "book_appointment": 1,
+        "doctor_information": 1,
+        "doctor_schedule": 1
+      },
+      "doctor_schedule": {
+        "doctor_schedule": 5,
+        "unclear": 1,
+        "book_appointment": 1
+      },
+      "operator": {
+        "book_appointment": 3,
+        "operator": 9,
+        "unclear": 3,
+        "reschedule_appointment": 1
+      },
+      "reschedule_appointment": {
+        "reschedule_appointment": 9,
+        "book_appointment": 1,
+        "unclear": 1
+      },
+      "unclear": {
+        "book_appointment": 1,
+        "unclear": 4,
+        "cancel_appointment": 1,
+        "reschedule_appointment": 1
+      }
+    },
+    "workflow_accuracy": 0.65,
+    "tool_accuracy": 0.3514,
+    "tool_n": 37,
+    "escalation": {
+      "false_escalation": 0,
+      "missed": 8,
+      "precision": 1.0,
+      "recall": 0.5,
+      "rate": 0.1,
+      "tn": 64,
+      "tp": 8
+    },
+    "clarification": {
+      "false_escalation": 8,
+      "missed": 20,
+      "precision": 0.7333,
+      "recall": 0.5238,
+      "rate": 0.375,
+      "tn": 30,
+      "tp": 22
+    },
+    "error_count": 0,
+    "error_rate": 0.0,
+    "latency_ms": {
+      "mean": 0.22,
+      "p50": 0.17,
+      "p95": 0.47,
+      "max": 0.95
+    },
+    "ece": 0.05,
+    "calibration_bins": [
+      {
+        "bin": "0.0-0.2",
+        "n": 0,
+        "acc": null,
+        "mean_conf": null
+      },
+      {
+        "bin": "0.2-0.4",
+        "n": 0,
+        "acc": null,
+        "mean_conf": null
+      },
+      {
+        "bin": "0.4-0.6",
+        "n": 0,
+        "acc": null,
+        "mean_conf": null
+      },
+      {
+        "bin": "0.6-0.8",
+        "n": 80,
+        "acc": 0.65,
+        "mean_conf": 0.6
+      },
+      {
+        "bin": "0.8-1.0",
+        "n": 0,
+        "acc": null,
+        "mean_conf": null
+      }
+    ]
+  },
+  "thresholds": {
+    "intent": 0.85,
+    "human": 0.6,
+    "clarify": 0.55
+  }
+}
