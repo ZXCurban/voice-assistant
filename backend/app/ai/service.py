@@ -215,13 +215,18 @@ async def chat(
 
     client = build_client(settings)
     reply = "Не получилось обработать запрос, попробуйте переформулировать, пожалуйста."
+    # FRIDA pre-router (feature-flagged, default OFF). Attaches a bounded
+    # intent hint; never executes actions. Any failure -> LLM-only path.
+    frida_hint = ""
+    if settings.frida_enabled:
+        frida_hint = _frida_hint(message)
     for _ in range(MAX_TOOL_ITERATIONS):
         if is_disconnected is not None and await is_disconnected():
             logger.info("client gone, aborting tool loop")
             break
         started = time.monotonic()
         completion = await client.complete_with_tools(
-            messages=[{"role": "system", "content": _system_prompt()}, *history],
+            messages=[{"role": "system", "content": _system_prompt() + frida_hint}, *history],
             max_tokens=settings.llm_max_tokens,
             temperature=settings.llm_temperature,
             tools=TOOLS,
@@ -267,3 +272,57 @@ def reset_conversations() -> None:
     """Drop all in-memory history (tests and local restarts)."""
     _conversations.clear()
     _contexts.clear()
+
+
+_frida_router: Any = None
+
+
+def _frida_hint(message: str) -> str:
+    """Build a FRIDA intent hint suffix ("" on any failure).
+
+    Observability: logs structured decision fields only — never the raw
+    message, names, or phones.
+    """
+    global _frida_router
+    settings = get_settings()
+    try:
+        from app.services.frida_router import (
+            FridaRouter,
+            apply_policy,
+            build_frida_state,
+            create_real_judge,
+        )
+
+        if _frida_router is None:
+            _frida_router = FridaRouter(
+                judge=create_real_judge(threads=settings.frida_threads),
+                backend="onnx-int8",
+            )
+        state = build_frida_state(message)
+        # OnnxJudge releases the GIL inside onnxruntime; direct call keeps
+        # the diff minimal. decide() has its own timeout + fallback.
+        decision = _frida_router.decide(state, timeout_s=settings.frida_timeout_s)
+        policy = apply_policy(
+            decision,
+            intent_threshold=settings.frida_intent_threshold,
+            clarify_threshold=settings.frida_clarify_threshold,
+            human_threshold=settings.frida_human_threshold,
+        )
+        logger.info(
+            "frida intent=%s conf=%.3f human=%.3f clar=%.3f ms=%.1f action=%s err=%s",
+            decision.intent,
+            decision.confidence,
+            decision.needs_human,
+            decision.needs_clarification,
+            decision.latency_ms,
+            policy["action"],
+            decision.error,
+        )
+        if policy["action"] == "hint":
+            return f"\n[FRIDA-hint intent={decision.intent} conf={decision.confidence:.2f}]"
+        if policy["action"] == "handoff":
+            return "\n[FRIDA-hint: consider human handoff]"
+        return ""
+    except Exception as exc:  # FRIDA must never break chat
+        logger.warning("frida hint skipped: %s", exc)
+        return ""
