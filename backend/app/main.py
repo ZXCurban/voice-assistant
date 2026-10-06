@@ -5,11 +5,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.errors import register_exception_handlers
+from app.api.trusted_context import TrustedChannelContextMiddleware
 from app.api.v1 import api_router
-from app.core.config import get_settings
+from app.core.config import get_settings, is_production
 from app.core.logging import configure_logging
 from app.db.redis import close_redis_client, get_redis_client
 from app.db.session import dispose_engine, get_engine
@@ -23,6 +25,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     when infrastructure is unavailable (important for tests/CI).
     """
     settings = get_settings()
+    if is_production(settings) and (
+        settings.channel_context_secret is None
+        or len(settings.channel_context_secret.encode()) < 32
+        or settings.auto_migrate
+        or settings.seed_demo_data
+    ):
+        raise RuntimeError(
+            "production requires a 32-byte channel context secret and forbids "
+            "startup migrations/seeding"
+        )
     configure_logging(settings.log_level)
     get_engine()
     get_redis_client()
@@ -38,10 +50,26 @@ def create_app() -> FastAPI:
     Settings.api_v1_prefix is reserved for future domain routers only.
     """
     settings = get_settings()
-    app = FastAPI(title=settings.app_name, debug=settings.app_debug, lifespan=lifespan)
+    production = is_production(settings)
+    app = FastAPI(
+        title=settings.app_name,
+        debug=settings.app_debug,
+        lifespan=lifespan,
+        docs_url=None if production else "/docs",
+        redoc_url=None if production else "/redoc",
+        openapi_url=None if production else "/openapi.json",
+    )
+    app.add_middleware(TrustedChannelContextMiddleware, settings=settings)
     register_exception_handlers(app)
     app.include_router(api_router)
-    app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"))
+    if not production:
+        app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"))
+
+        @app.get("/", include_in_schema=False)
+        async def root() -> RedirectResponse:
+            """Demo convenience: bare host opens the text-assistant chat page."""
+            return RedirectResponse(url="/static/chat.html")
+
     return app
 
 

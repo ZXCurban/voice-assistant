@@ -1,0 +1,182 @@
+{
+  "model": "frida",
+  "split": "validation",
+  "dataset_version": "clinic_intents_v1",
+  "frida_pinned": "ai-forever/FRIDA-Decisions@v0.3.0",
+  "timestamp_utc": "2026-10-05T15:13:22.652162+00:00",
+  "seed": 42,
+  "metrics": {
+    "n": 80,
+    "intent_accuracy": 0.6375,
+    "intent_macro_f1": 0.64,
+    "per_class": {
+      "appointment_status": {
+        "precision": 0.8,
+        "recall": 0.5,
+        "f1": 0.6154,
+        "support": 8
+      },
+      "book_appointment": {
+        "precision": 0.8889,
+        "recall": 0.4211,
+        "f1": 0.5714,
+        "support": 19
+      },
+      "cancel_appointment": {
+        "precision": 0.8889,
+        "recall": 0.8889,
+        "f1": 0.8889,
+        "support": 9
+      },
+      "clinic_information": {
+        "precision": 0.8333,
+        "recall": 0.7143,
+        "f1": 0.7692,
+        "support": 7
+      },
+      "doctor_information": {
+        "precision": 0.6,
+        "recall": 1.0,
+        "f1": 0.75,
+        "support": 3
+      },
+      "doctor_schedule": {
+        "precision": 0.625,
+        "recall": 0.7143,
+        "f1": 0.6667,
+        "support": 7
+      },
+      "operator": {
+        "precision": 1.0,
+        "recall": 0.125,
+        "f1": 0.2222,
+        "support": 8
+      },
+      "reschedule_appointment": {
+        "precision": 0.6667,
+        "recall": 0.8889,
+        "f1": 0.7619,
+        "support": 9
+      },
+      "unclear": {
+        "precision": 0.36,
+        "recall": 0.9,
+        "f1": 0.5143,
+        "support": 10
+      }
+    },
+    "confusion": {
+      "appointment_status": {
+        "appointment_status": 4,
+        "reschedule_appointment": 2,
+        "unclear": 2
+      },
+      "book_appointment": {
+        "unclear": 5,
+        "book_appointment": 8,
+        "doctor_schedule": 3,
+        "reschedule_appointment": 1,
+        "doctor_information": 1,
+        "clinic_information": 1
+      },
+      "cancel_appointment": {
+        "cancel_appointment": 8,
+        "unclear": 1
+      },
+      "clinic_information": {
+        "clinic_information": 5,
+        "doctor_information": 1,
+        "unclear": 1
+      },
+      "doctor_information": {
+        "doctor_information": 3
+      },
+      "doctor_schedule": {
+        "doctor_schedule": 5,
+        "appointment_status": 1,
+        "unclear": 1
+      },
+      "operator": {
+        "unclear": 5,
+        "operator": 1,
+        "reschedule_appointment": 1,
+        "cancel_appointment": 1
+      },
+      "reschedule_appointment": {
+        "reschedule_appointment": 8,
+        "unclear": 1
+      },
+      "unclear": {
+        "unclear": 9,
+        "book_appointment": 1
+      }
+    },
+    "workflow_accuracy": 0.6375,
+    "tool_accuracy": 0.5135,
+    "tool_n": 37,
+    "escalation": {
+      "false_escalation": 20,
+      "missed": 3,
+      "precision": 0.2308,
+      "recall": 0.6667,
+      "rate": 0.325,
+      "tn": 51,
+      "tp": 6
+    },
+    "clarification": {
+      "false_escalation": 26,
+      "missed": 9,
+      "precision": 0.6,
+      "recall": 0.8125,
+      "rate": 0.8125,
+      "tn": 6,
+      "tp": 39
+    },
+    "error_count": 0,
+    "error_rate": 0.0,
+    "latency_ms": {
+      "mean": 4668.48,
+      "p50": 4829.95,
+      "p95": 5148.7,
+      "max": 5528.81
+    },
+    "ece": 0.0599,
+    "calibration_bins": [
+      {
+        "bin": "0.0-0.2",
+        "n": 0,
+        "acc": null,
+        "mean_conf": null
+      },
+      {
+        "bin": "0.2-0.4",
+        "n": 14,
+        "acc": 0.3571,
+        "mean_conf": 0.3128
+      },
+      {
+        "bin": "0.4-0.6",
+        "n": 18,
+        "acc": 0.3333,
+        "mean_conf": 0.5019
+      },
+      {
+        "bin": "0.6-0.8",
+        "n": 15,
+        "acc": 0.6667,
+        "mean_conf": 0.6983
+      },
+      {
+        "bin": "0.8-1.0",
+        "n": 33,
+        "acc": 0.9091,
+        "mean_conf": 0.9293
+      }
+    ]
+  },
+  "thresholds": {
+    "intent": 0.85,
+    "human": 0.6,
+    "clarify": 0.55
+  }
+}

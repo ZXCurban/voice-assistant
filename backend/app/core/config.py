@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +21,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/app"
     redis_url: str = "redis://localhost:6379/0"
+    channel_context_secret: str | None = None
+    conversation_state_ttl_s: int = Field(default=1800, gt=0, le=86400)
+    auto_migrate: bool = False
+    seed_demo_data: bool = False
 
     # Local LLM (OpenAI-compatible HTTP: llama-server, vLLM, Ollama, …).
     # The model name is config only — prompts/tools carry no model-specific
@@ -40,8 +45,24 @@ class Settings(BaseSettings):
     llm_enable_thinking: bool = False
     llm_tool_choice: str = "auto"
 
+    # FRIDA-Decisions pre-router (bounded semantic decisions only).
+    # Default OFF: evaluation harness first, production path unchanged.
+    # When enabled, chat() attaches an intent hint + guardrail signals;
+    # FRIDA never touches the DB or executes business actions.
+    frida_enabled: bool = False
+    frida_threads: int = 4
+    frida_timeout_s: float = 5.0
+    frida_intent_threshold: float = 0.85
+    frida_human_threshold: float = 0.60
+    frida_clarify_threshold: float = 0.55
+
 
 @lru_cache
 def get_settings() -> Settings:
     """Return cached settings instance."""
     return Settings()
+
+
+def is_production(settings: Settings) -> bool:
+    """Recognize the production profile without changing local/dev defaults."""
+    return settings.app_env.casefold() in {"prod", "production"}
