@@ -2,6 +2,7 @@ name: Deploy
 
 # CD: deploys the API to the staging server over SSH.
 # Triggers on pushes to main and manually (workflow_dispatch).
+# Skips gracefully (grey, not red) until the DEPLOY_* secrets are configured.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   DEPLOY_HOST     – server address, e.g. 100.69.153.118
@@ -18,6 +19,8 @@ on:
 
 jobs:
   deploy:
+    # Skip (don't fail) when CD secrets are not configured yet, e.g. forks.
+    if: ${{ secrets.DEPLOY_HOST != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
@@ -27,5 +30,6 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
+            BRANCH="${{ secrets.DEPLOY_BRANCH }}"
             cd ${{ secrets.DEPLOY_PATH }} && \
-            API_PORT=${{ secrets.API_PORT }} ./scripts/deploy.sh ${{ secrets.DEPLOY_BRANCH }}
+            API_PORT=${{ secrets.API_PORT }} ./scripts/deploy.sh ${BRANCH:-main}
