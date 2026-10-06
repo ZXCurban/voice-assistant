@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.errors import register_exception_handlers
@@ -63,6 +64,12 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     if not production:
         app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"))
+
+        @app.get("/", include_in_schema=False)
+        async def root() -> RedirectResponse:
+            """Demo convenience: bare host opens the text-assistant chat page."""
+            return RedirectResponse(url="/static/chat.html")
+
     return app
 
 
