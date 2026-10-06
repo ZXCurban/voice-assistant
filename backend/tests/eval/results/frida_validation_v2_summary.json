@@ -1,0 +1,186 @@
+{
+  "model": "frida",
+  "split": "validation",
+  "dataset_version": "clinic_intents_v2",
+  "frida_pinned": "ai-forever/FRIDA-Decisions@v0.3.0",
+  "timestamp_utc": "2026-10-06T06:40:20.573657+00:00",
+  "seed": 42,
+  "metrics": {
+    "n": 120,
+    "intent_accuracy": 0.55,
+    "intent_macro_f1": 0.5748,
+    "per_class": {
+      "appointment_status": {
+        "precision": 0.8333,
+        "recall": 0.3571,
+        "f1": 0.5,
+        "support": 14
+      },
+      "book_appointment": {
+        "precision": 0.75,
+        "recall": 0.3,
+        "f1": 0.4286,
+        "support": 30
+      },
+      "cancel_appointment": {
+        "precision": 0.8889,
+        "recall": 0.8889,
+        "f1": 0.8889,
+        "support": 9
+      },
+      "clinic_information": {
+        "precision": 0.7143,
+        "recall": 0.7143,
+        "f1": 0.7143,
+        "support": 7
+      },
+      "doctor_information": {
+        "precision": 0.625,
+        "recall": 0.8333,
+        "f1": 0.7143,
+        "support": 6
+      },
+      "doctor_schedule": {
+        "precision": 0.6667,
+        "recall": 0.5455,
+        "f1": 0.6,
+        "support": 11
+      },
+      "operator": {
+        "precision": 1.0,
+        "recall": 0.0833,
+        "f1": 0.1538,
+        "support": 12
+      },
+      "reschedule_appointment": {
+        "precision": 0.5714,
+        "recall": 0.8,
+        "f1": 0.6667,
+        "support": 10
+      },
+      "unclear": {
+        "precision": 0.3519,
+        "recall": 0.9048,
+        "f1": 0.5067,
+        "support": 21
+      }
+    },
+    "confusion": {
+      "appointment_status": {
+        "appointment_status": 5,
+        "reschedule_appointment": 3,
+        "unclear": 5,
+        "book_appointment": 1
+      },
+      "book_appointment": {
+        "unclear": 13,
+        "book_appointment": 9,
+        "doctor_schedule": 3,
+        "reschedule_appointment": 2,
+        "doctor_information": 1,
+        "clinic_information": 2
+      },
+      "cancel_appointment": {
+        "cancel_appointment": 8,
+        "unclear": 1
+      },
+      "clinic_information": {
+        "clinic_information": 5,
+        "doctor_information": 1,
+        "unclear": 1
+      },
+      "doctor_information": {
+        "doctor_information": 5,
+        "unclear": 1
+      },
+      "doctor_schedule": {
+        "doctor_schedule": 6,
+        "appointment_status": 1,
+        "unclear": 3,
+        "doctor_information": 1
+      },
+      "operator": {
+        "unclear": 9,
+        "operator": 1,
+        "reschedule_appointment": 1,
+        "cancel_appointment": 1
+      },
+      "reschedule_appointment": {
+        "reschedule_appointment": 8,
+        "unclear": 2
+      },
+      "unclear": {
+        "unclear": 19,
+        "book_appointment": 2
+      }
+    },
+    "workflow_accuracy": 0.55,
+    "tool_accuracy": 0.3729,
+    "tool_n": 59,
+    "escalation": {
+      "false_escalation": 33,
+      "missed": 4,
+      "precision": 0.2326,
+      "recall": 0.7143,
+      "rate": 0.3583,
+      "tn": 73,
+      "tp": 10
+    },
+    "clarification": {
+      "false_escalation": 37,
+      "missed": 10,
+      "precision": 0.6373,
+      "recall": 0.8667,
+      "rate": 0.85,
+      "tn": 8,
+      "tp": 65
+    },
+    "error_count": 0,
+    "error_rate": 0.0,
+    "latency_ms": {
+      "mean": 4656.76,
+      "p50": 4780.19,
+      "p95": 5084.32,
+      "max": 5548.62
+    },
+    "ece": 0.1156,
+    "calibration_bins": [
+      {
+        "bin": "0.0-0.2",
+        "n": 0,
+        "acc": null,
+        "mean_conf": null
+      },
+      {
+        "bin": "0.2-0.4",
+        "n": 21,
+        "acc": 0.2857,
+        "mean_conf": 0.3056
+      },
+      {
+        "bin": "0.4-0.6",
+        "n": 26,
+        "acc": 0.3462,
+        "mean_conf": 0.5051
+      },
+      {
+        "bin": "0.6-0.8",
+        "n": 29,
+        "acc": 0.4828,
+        "mean_conf": 0.697
+      },
+      {
+        "bin": "0.8-1.0",
+        "n": 44,
+        "acc": 0.8409,
+        "mean_conf": 0.9115
+      }
+    ]
+  },
+  "thresholds": {
+    "intent": 0.85,
+    "human": 0.6,
+    "clarify": 0.55
+  },
+  "note": ""
+}

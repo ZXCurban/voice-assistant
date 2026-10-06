@@ -1,60 +1,37 @@
-"""Agentic chat service: LLM tool loop over AssistantOrchestrator.
+"""Text turn pipeline: parse, normalize, route to backend and render an event."""
 
-Each turn the model may call backend tools (clinics, doctors, slots,
-booking, …). Tool results come from the real services layer, so the
-model presents facts instead of inventing them. History stays in process
-memory; booking confirmation flows through the orchestrator's
-confirmation_required results.
-"""
-
-import json
 import logging
-import time
 import uuid
-from collections.abc import Awaitable, Callable
-from datetime import date, datetime
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from datetime import datetime
+from hashlib import sha256
 from typing import Any
 
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import build_client
 from app.ai.fastpath import match_fastpath
-from app.ai.prompts import SYSTEM_PROMPT
 from app.ai.schemas import ChatResponse
-from app.ai.tools import TOOLS, execute_tool
+from app.assistant.dialogue import DialogueState
+from app.assistant.dialogue_manager import DialogueManager
+from app.assistant.nlu import parse_utterance
+from app.assistant.normalizer import normalize
+from app.assistant.orchestrator import AssistantOrchestrator
 from app.assistant.schemas import AssistantContext
+from app.assistant.state_store import RedisDialogueStateStore
 from app.core.config import get_settings
-from app.services import geo as geo_service
+from app.core.identity import AssistantIdentity
 
 logger = logging.getLogger(__name__)
 
-# Max stored turns per conversation (user+assistant pairs), excluding the
-# always-prepended system prompt. In-memory only: restarts drop history.
-# Kept small so the dialogue fits the local model's context window.
-MAX_TURNS = 5
-# Safety cap for one user turn. Day-by-day slot scans run server-side inside
-# find_nearest_slots (ONE tool call), so a turn never legitimately needs
-# more: typically 1-3 calls (find_clinics + slots + book preview).
-# Kept low because each iteration is a full local-model generation.
-MAX_TOOL_ITERATIONS = 6
-# Backstop only: slot lists are already capped to 8 in execute_tool.
-MAX_TOOL_RESULT_CHARS = 2500
+_orchestrator = AssistantOrchestrator()
+_dialogue_manager = DialogueManager(_orchestrator)
 
-_WEEKDAYS_RU = {
-    0: "понедельник",
-    1: "вторник",
-    2: "среда",
-    3: "четверг",
-    4: "пятница",
-    5: "суббота",
-    6: "воскресенье",
-}
-
-_conversations: dict[str, list[dict[str, Any]]] = {}
-# Sticky dialogue memory per conversation: ids resolved once (clinic,
-# patient, doctor, slot) are reused as fallbacks, so the model cannot lose
-# them between turns. Explicit tool arguments always win.
+# Sticky dialogue memory per conversation: resolved clinic, patient, doctor
+# and slot ids can be reused across turns. Explicit request fields win.
 _contexts: dict[str, AssistantContext] = {}
+_dialogue_states: dict[str, DialogueState] = {}
 
 
 def _context(conversation_id: str) -> AssistantContext:
@@ -119,72 +96,22 @@ def _update_context(name: str, result: dict[str, Any], context: AssistantContext
             context.patient_id = patient_id
 
 
-def _history(conversation_id: str) -> list[dict[str, Any]]:
-    """Return live history list for a conversation, creating it if needed."""
-    history = _conversations.get(conversation_id)
-    if history is None:
-        history = []
-        _conversations[conversation_id] = history
-    return history
-
-
-def _has_pending_confirmation(history: list[dict[str, Any]]) -> bool:
-    """True if the last tool result waits for an explicit «да/нет».
-
-    Fastpath templates must not swallow confirmation answers, so callers
-    check this before consulting match_fastpath().
-    """
-    for entry in reversed(history):
-        if entry.get("role") == "tool":
-            try:
-                payload = json.loads(str(entry.get("content") or "{}"))
-            except ValueError:
-                return False
-            if not isinstance(payload, dict):
-                return False
-            return payload.get("status") == "confirmation_required"
-        if entry.get("role") == "assistant" and entry.get("tool_calls"):
-            continue
-        if entry.get("role") == "assistant":
-            return False
-    return False
-
-
-def _trim(history: list[dict[str, Any]]) -> None:
-    """Drop oldest turns beyond MAX_TURNS (in place)."""
-    overflow = len(history) - MAX_TURNS * 2
-    if overflow > 0:
-        del history[:overflow]
-
-
-def _remembered_city(history: list[dict[str, Any]], context: AssistantContext) -> str | None:
-    """Best-known city query: latest user message wins, context is fallback.
-
-    Deterministic backfill so find_clinics keeps the user's city even when
-    the model forgets to pass it. The freshest mention updates the context.
-    """
-    for entry in reversed(history):
-        if entry.get("role") != "user":
-            continue
-        content = entry.get("content")
-        if not isinstance(content, str):
-            continue
-        matched = geo_service.canonical_city(content)
-        if matched is not None:
-            context.city = matched
-            return matched
-        break  # only the latest user message counts, then context fallback
-    return context.city
-
-
-def _system_prompt() -> str:
-    """System prompt with today's date so the model resolves relative dates."""
-    today = date.today()
-    return (
-        f"{SYSTEM_PROMPT}\n\nСегодня: {today.isoformat()} "
-        f"({_WEEKDAYS_RU[today.weekday()]}). Вычисляй даты вида «завтра» и "
-        "«на этой неделе» от сегодняшнего дня и передавай их в формате YYYY-MM-DD."
-    )
+@asynccontextmanager
+async def _conversation_state(
+    active_id: str,
+    redis: Redis | None,
+    identity: AssistantIdentity,
+    ttl_seconds: int,
+) -> AsyncIterator[DialogueState]:
+    if redis is None:
+        state = _dialogue_states.setdefault(active_id, DialogueState(conversation_id=active_id))
+        yield state
+        return
+    store = RedisDialogueStateStore(redis, ttl_seconds=ttl_seconds)
+    async with store.conversation(
+        active_id, subject=identity.subject, clinic_id=identity.clinic_id
+    ) as state:
+        yield state
 
 
 async def chat(
@@ -192,93 +119,81 @@ async def chat(
     conversation_id: str | None = None,
     *,
     session: AsyncSession,
+    redis: Redis | None = None,
+    identity: AssistantIdentity | None = None,
     is_disconnected: Callable[[], Awaitable[bool]] | None = None,
 ) -> ChatResponse:
-    """Run one user turn through the tool loop, return the final reply.
-
-    `is_disconnected` (e.g. Starlette's request.is_disconnected) aborts the
-    loop between iterations so a closed browser tab stops burning
-    local-model generations.
-    """
+    """Run the deterministic pipeline and keep the existing chat API shape."""
     settings = get_settings()
     active_id = conversation_id or uuid.uuid4().hex
-    history = _history(active_id)
-    history.append({"role": "user", "content": message})
-    _trim(history)
-
-    # Deterministic smalltalk first: instant reply, zero LLM cost.
-    # Never fires while a booking preview waits for «да/нет».
-    fast = match_fastpath(message, has_pending_confirmation=_has_pending_confirmation(history))
-    if fast is not None:
-        history.append({"role": "assistant", "content": fast})
-        return ChatResponse(conversation_id=active_id, message=fast, model=settings.llm_model)
-
-    client = build_client(settings)
-    reply = "Не получилось обработать запрос, попробуйте переформулировать, пожалуйста."
-    # FRIDA pre-router (feature-flagged, default OFF). Attaches a bounded
-    # intent hint; never executes actions. Any failure -> LLM-only path.
-    frida_hint = ""
-    if settings.frida_enabled:
-        frida_hint = _frida_hint(message)
-    for _ in range(MAX_TOOL_ITERATIONS):
-        if is_disconnected is not None and await is_disconnected():
-            logger.info("client gone, aborting tool loop")
-            break
-        started = time.monotonic()
-        completion = await client.complete_with_tools(
-            messages=[{"role": "system", "content": _system_prompt() + frida_hint}, *history],
-            max_tokens=settings.llm_max_tokens,
-            temperature=settings.llm_temperature,
-            tools=TOOLS,
+    principal = identity or AssistantIdentity(subject="local-demo")
+    if is_disconnected is not None and await is_disconnected():
+        return ChatResponse(
+            conversation_id=active_id,
+            message="Запрос остановлен.",
+            model="deterministic",
         )
-        elapsed = time.monotonic() - started
-        logger.info("llm turn took %.2fs (tools=%d)", elapsed, len(completion.tool_calls))
-        if not completion.tool_calls:
-            reply = completion.content.strip() or reply
-            history.append({"role": "assistant", "content": reply})
-            break
-        history.append(
-            {
-                "role": "assistant",
-                "content": completion.content,
-                "tool_calls": [call.raw for call in completion.tool_calls],
-            }
-        )
-        for call in completion.tool_calls:
-            call_args = dict(call.arguments)
-            if (
-                call.name == "find_clinics"
-                and "city" not in call_args
-                and "address" not in call_args
-            ):
-                remembered = _remembered_city(history, _context(active_id))
-                if remembered is not None:
-                    call_args["city"] = remembered
-            result = await execute_tool(session, call.name, call_args, context=_context(active_id))
-            _update_context(call.name, result, _context(active_id))
-            history.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call.id,
-                    "content": json.dumps(result, ensure_ascii=False)[:MAX_TOOL_RESULT_CHARS],
-                }
+    async with _conversation_state(
+        active_id, redis, principal, settings.conversation_state_ttl_s
+    ) as state:
+        if principal.tenant_locked:
+            state.principal_id = principal.subject
+            state.tenant_locked = True
+            state.clinic_id = principal.clinic_id
+            state.clinic_city = principal.clinic_city
+            state.patient_id = principal.patient_id
+            state.patient_phone = principal.verified_phone
+            state.patient_full_name = principal.full_name
+        first_turn = state.last_user_message_hash is None
+        if first_turn and state.phase in {"START", "COMPLETED", "CANCELLED"}:
+            fast = match_fastpath(message, has_pending_confirmation=False)
+            if fast is not None:
+                state.last_user_message_hash = sha256(message.encode()).hexdigest()
+                state.last_response = fast
+                state.touch()
+                return ChatResponse(conversation_id=active_id, message=fast, model="deterministic")
+        try:
+            if settings.frida_enabled:
+                import json
+
+                parsed = parse_utterance(message)
+                payload = normalize(parsed, clinic_id=state.clinic_id)
+                decision = _frida_hint(json.dumps(payload, ensure_ascii=False))
+                if decision == "clarify" and not state.pending_action:
+                    from app.assistant.response import render_event
+
+                    reply = render_event("clarification_required", missing=["request"])
+                else:
+                    reply = await _dialogue_manager.handle(session, state, message)
+            else:
+                reply = await _dialogue_manager.handle(session, state, message)
+        except Exception as exc:
+            logger.error("assistant dialogue failed (%s)", type(exc).__name__)
+            state.phase = (
+                "CONFIRMING"
+                if state.pending_action is not None
+                else "COLLECTING_DATA"
+                if state.intent is not None
+                else "ERROR"
             )
-    else:
-        history.append({"role": "assistant", "content": reply})
-    return ChatResponse(conversation_id=active_id, message=reply, model=settings.llm_model)
+            reply = "Не удалось выполнить запрос. Ничего не изменено; попробуйте ещё раз."
+            state.last_user_message_hash = sha256(message.encode()).hexdigest()
+            state.last_response = reply
+            state.touch()
+    return ChatResponse(conversation_id=active_id, message=reply, model="deterministic")
 
 
 def reset_conversations() -> None:
     """Drop all in-memory history (tests and local restarts)."""
-    _conversations.clear()
     _contexts.clear()
+    _dialogue_states.clear()
 
 
 _frida_router: Any = None
 
 
 def _frida_hint(message: str) -> str:
-    """Build a FRIDA intent hint suffix ("" on any failure).
+    """Apply FRIDA confidence policy to a normalized JSON intent object.
 
     Observability: logs structured decision fields only — never the raw
     message, names, or phones.
@@ -318,11 +233,11 @@ def _frida_hint(message: str) -> str:
             policy["action"],
             decision.error,
         )
-        if policy["action"] == "hint":
-            return f"\n[FRIDA-hint intent={decision.intent} conf={decision.confidence:.2f}]"
-        if policy["action"] == "handoff":
-            return "\n[FRIDA-hint: consider human handoff]"
-        return ""
+        if policy["action"] == "fallback":
+            return "continue"
+        if policy["action"] in {"clarify", "handoff"}:
+            return "clarify"
+        return str(decision.intent)
     except Exception as exc:  # FRIDA must never break chat
         logger.warning("frida hint skipped: %s", exc)
         return ""

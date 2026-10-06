@@ -1,34 +1,39 @@
 # Assistant orchestration boundary
 
+The active user interface is text. The request flow is text input → rules NLU
+→ normalizer → optional FRIDA policy → stateful dialogue manager → backend
+orchestrator/services → event-based response template. State persists in Redis
+between requests, scoped by the signed principal and clinic in production.
+STT/TTS adapters and trained conversational NLU weights are not included.
+
 ```text
-STT
+Text input
  ↓
-LLM / Intent & Entity Extraction        ← AI teammate (not in this repo)
+Rules NLU + confidence (app/assistant/nlu.py)
  ↓
-AssistantRequest                         ← app/assistant/schemas.py
+Normalizer (app/assistant/normalizer.py)
  ↓
-AssistantOrchestrator                    ← app/assistant/orchestrator.py
+FRIDA decision policy (optional, normalized JSON only)
  ↓
-existing application services            ← app/services/*
+Dialogue Manager + Redis state
  ↓
-repositories → PostgreSQL
+AssistantOrchestrator → existing application services
+ ↓
+Event Response Engine (Jinja2) → text output
 ```
 
-No HTTP endpoint was added for the assistant layer: the AI teammate
-imports `AssistantOrchestrator` in-process (same service). The HTTP API
-documented in `docs/voice-map.md` stays the integration contract for
-remote clients; the orchestrator reuses the same services the routers
-call, so both surfaces share one source of truth.
+The existing `POST /api/v1/chat` contract is unchanged. The chat route calls
+`AssistantOrchestrator` in-process; backend services remain the single source
+of business rules. Redis is used only for dialogue state, not domain data.
 
 ## Division of responsibilities
 
 ```text
-LLM (teammate):
-- understands natural language ("запишите меня к дерматологу завтра")
-- extracts intent + entities (clinic, specialty/doctor, date, patient)
-- keeps dialogue state, asks follow-up questions, handles confirmation UX
-- NEVER accesses PostgreSQL / services / repositories
-- NEVER calculates availability or implements scheduling rules
+NLU / FRIDA:
+- parser identifies intent and candidate entities with confidence
+- normalizer converts dates, times and known specialty mentions
+- FRIDA can choose a bounded backend route or request clarification
+- neither component accesses PostgreSQL / services / repositories
 
 Backend (this repo):
 - validates entities against the database
@@ -43,6 +48,7 @@ Backend (this repo):
 - `AssistantRequest`: flat typed model — `intent` (13 literals),
   `clinic_id`, `patient_id`, `specialty_id`/`specialty_name`,
   `doctor_id`/`doctor_name`, `appointment_id`, `date` (clinic-local day),
+  `time_after`/`time_at` (clinic-local spoken time),
   `starts_at`/`new_starts_at` (tz-aware), `reason`, patient fields,
   `confirmed`, `context`, plus optional `city`/`address` for
   `find_clinics` ranking (nearest-first via `services/geo.py`; absent →
@@ -53,10 +59,10 @@ Backend (this repo):
   `confirmation_required`), `code` (stable machine string),
   `message` (human-readable, may be paraphrased), `requires_confirmation`,
   `details` (JSON payloads: `slots`, `appointment`, `candidates`, …).
-- `AssistantContext`: minimal conversational memory
-  (`clinic_id`, `patient_id`, selected specialty/doctor/slot). Managed by
-  the dialogue layer; no persistence, no Redis. Explicit request fields
-  always win over context.
+- `DialogueState`: workflow and candidate values persisted in Redis with TTL;
+  key scope includes a hash of principal+clinic and conversation ID. Raw user
+  utterances are not kept in conversation history. A short Redis lock
+  serializes turns for the same conversation.
 
 ## Clarification model
 
@@ -72,7 +78,7 @@ The orchestrator never invents missing information:
 | Doctor name matches 2+ doctors | `need_clarification` / `AMBIGUOUS_DOCTOR` + `candidates` |
 | Unknown specialty/doctor/clinic/… | `not_found` / `<ENTITY>_NOT_FOUND` |
 | Search yields zero slots | `not_found` / `NO_SLOTS_AVAILABLE` (no fabricated alternatives) |
-| Malformed LLM params (bad status, missing ids) | `invalid_input` / `INVALID_INPUT` |
+| Invalid normalized params (bad status, missing ids) | `invalid_input` / `INVALID_INPUT` |
 
 Cross-tenant references behave exactly like the HTTP API: `not_found`
 (never reveal whether the foreign id exists).
@@ -101,7 +107,7 @@ The orchestrator implements no conversation itself.
 Original messages are preserved in `message`; nothing collapses into a
 generic error.
 
-## Rules the AI teammate must follow
+## Rules the assistant pipeline must follow
 
 1. Resolve `clinic_id` first; every call is tenant-scoped.
 2. Copy `starts_at` verbatim from a `find_slots` response; never invent
@@ -115,7 +121,8 @@ generic error.
 
 ## What is deliberately absent
 
-No ToolRegistry/plugin framework (explicit `handle` dispatch is enough),
-no conversation-history storage, no Redis, no auth, no LLM/STT/TTS SDKs.
-`AssistantOrchestrator` is stateless; all state lives in the dialogue
-layer (`AssistantContext`) or PostgreSQL.
+No ToolRegistry/plugin framework (explicit `handle` dispatch is enough), no
+LLM in the chat path, and no STT/TTS SDKs. `AssistantOrchestrator` remains
+stateless. Production requests require signed gateway claims, but a concrete
+gateway/OTP/SSO implementation, rate limiting, audit pipeline, and clinician-
+approved symptom-to-specialty map remain outside the repository.

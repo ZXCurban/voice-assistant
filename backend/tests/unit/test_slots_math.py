@@ -3,10 +3,12 @@
 from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
+from app.schemas.slot import SlotDoctorRef, SlotOut, SlotSpecialtyRef
 from app.services.availability import (
     LocalInterval,
     compute_day_slots,
     expand_slots,
+    filter_slots_after_local_time,
     intersect,
 )
 
@@ -89,3 +91,26 @@ def test_compute_day_slots_skips_booked_and_past() -> None:
         now_utc=datetime(2026, 1, 12, 8, 15, tzinfo=UTC),
     )
     assert pairs == []
+
+
+def test_filter_slots_uses_clinic_local_time() -> None:
+    doctor = SlotDoctorRef(id=1, full_name="Test Doctor")
+    specialty = SlotSpecialtyRef(id=1, name="cardiology")
+    slots = [
+        SlotOut(
+            doctor=doctor,
+            specialty=specialty,
+            starts_at=datetime(2026, 1, 12, 13, 0, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 12, 13, 30, tzinfo=UTC),
+        ),
+        SlotOut(
+            doctor=doctor,
+            specialty=specialty,
+            starts_at=datetime(2026, 1, 12, 14, 0, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 12, 14, 30, tzinfo=UTC),
+        ),
+    ]
+    filtered = filter_slots_after_local_time(
+        slots, time_after=time(14, 0), clinic_timezone="Europe/Warsaw"
+    )
+    assert [slot.starts_at for slot in filtered] == [datetime(2026, 1, 12, 14, 0, tzinfo=UTC)]
