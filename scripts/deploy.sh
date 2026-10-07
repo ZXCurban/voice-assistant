@@ -1,14 +1,17 @@
 #!/bin/sh
 # Server-side CD script for the voice-assistant backend.
-# Runs ON the server (e.g. /home/metrica/voice-assistant/deploy.sh).
+# Runs ON the server from the repo checkout, e.g.:
+#   API_PORT=8010 ./scripts/deploy.sh main
 # Idempotent: safe to re-run. Exits non-zero if the API is not healthy.
+# Skips the rebuild when the branch tip has not changed (but still ensures
+# the stack is up, e.g. after a reboot).
 #
 # Usage:
-#   ./deploy.sh [branch]   # default branch: main
+#   ./scripts/deploy.sh [branch]   # default branch: main
 #
 # What it does:
 #   1. git pull (fast-forward only) for the deployed branch
-#   2. docker compose build + up (db + redis + api)
+#   2. docker compose build + up (db + redis + api), or plain up if unchanged
 #   3. waits for /health to answer 200
 set -eu
 
@@ -16,15 +19,30 @@ BRANCH="${1:-main}"
 API_PORT="${API_PORT:-8010}"
 PROJECT="voice-assistant"
 
-cd "$(dirname "$0")"
+# Repo root (this script lives in scripts/).
+cd "$(dirname "$0")/.."
 
 echo "[deploy] branch: $BRANCH"
+if [ -n "$(git status --porcelain)" ]; then
+    echo "[deploy] ERROR: working tree is dirty, refusing to pull" >&2
+    git status --short >&2
+    exit 1
+fi
 git fetch origin
 git checkout "$BRANCH"
+BEFORE="$(git rev-parse HEAD)"
 git pull --ff-only origin "$BRANCH"
+AFTER="$(git rev-parse HEAD)"
 
-echo "[deploy] building and starting containers (project: $PROJECT)"
-API_PORT="$API_PORT" docker compose -p "$PROJECT" up --build -d
+if [ "$BEFORE" = "$AFTER" ]; then
+    echo "[deploy] no new commits ($AFTER), ensuring the stack is up"
+    # shellcheck disable=SC2086
+    API_PORT="$API_PORT" docker compose -p "$PROJECT" up -d
+else
+    echo "[deploy] $BEFORE -> $AFTER, building and starting (project: $PROJECT)"
+    # shellcheck disable=SC2086
+    API_PORT="$API_PORT" docker compose -p "$PROJECT" up --build -d
+fi
 
 echo "[deploy] waiting for API health on port $API_PORT"
 ok=0
