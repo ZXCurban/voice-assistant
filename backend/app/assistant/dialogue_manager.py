@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.assistant import dialogue_log
 from app.assistant.dialogue import DialogueState
 from app.assistant.nlu import NluParse, parse_utterance
 from app.assistant.normalizer import normalize
@@ -27,6 +28,46 @@ class DialogueManager:
         self.orchestrator = orchestrator
 
     async def handle(self, session: AsyncSession, state: DialogueState, message: str) -> str:
+        """Process one user turn and emit a structured dialogue-log record.
+
+        The record (user text, NLU parse, backend actions, reply) is flushed
+        here so direct DialogueManager callers are covered too; error turns
+        are logged with ``error`` set and then re-raised.
+        """
+        token = dialogue_log.start_turn()
+        try:
+            reply = await self._handle_inner(session, state, message)
+        except Exception as exc:
+            if dialogue_log.is_enabled():
+                dialogue_log.emit_turn(
+                    dialogue_log.build_turn(
+                        conversation_id=state.conversation_id,
+                        user_message=message,
+                        assistant_message=state.last_response or "",
+                        clinic_id=state.clinic_id,
+                        phase=state.phase,
+                        error=type(exc).__name__,
+                    ),
+                    sink_path=dialogue_log.configured_sink_path(),
+                )
+            raise
+        else:
+            if dialogue_log.is_enabled():
+                dialogue_log.emit_turn(
+                    dialogue_log.build_turn(
+                        conversation_id=state.conversation_id,
+                        user_message=message,
+                        assistant_message=reply,
+                        clinic_id=state.clinic_id,
+                        phase=state.phase,
+                    ),
+                    sink_path=dialogue_log.configured_sink_path(),
+                )
+            return reply
+        finally:
+            dialogue_log.reset_turn(token)
+
+    async def _handle_inner(self, session: AsyncSession, state: DialogueState, message: str) -> str:
         if state.expired():
             state.clear_workflow()
         message_hash = sha256(message.encode()).hexdigest()
@@ -36,6 +77,8 @@ class DialogueManager:
 
         parsed = parse_utterance(message)
         normalized = normalize(parsed, clinic_id=state.clinic_id)
+        dialogue_log.note_nlu(parsed.intent, parsed.confidence, parsed.slots)
+        dialogue_log.note_normalized(normalized)
         slots = {name: item.value for name, item in parsed.slots.items() if item.confidence >= 0.75}
 
         if state.awaiting_input == "full_name" and "full_name" not in slots:
@@ -827,7 +870,9 @@ class DialogueManager:
         return None
 
     async def _call(self, session: AsyncSession, payload: dict[str, Any]) -> AssistantResult:
-        return await self.orchestrator.handle(session, AssistantRequest.model_validate(payload))
+        result = await self.orchestrator.handle(session, AssistantRequest.model_validate(payload))
+        dialogue_log.note_action(payload, result)
+        return result
 
     @staticmethod
     def _select(
@@ -964,6 +1009,7 @@ class DialogueManager:
 
     @staticmethod
     def _remember(state: DialogueState, message: str, event: str, payload: dict[str, Any]) -> str:
+        dialogue_log.note_event(event)
         response = render_event(event, timezone=state.clinic_timezone, **payload)
         expected: str | None = None
         missing = payload.get("missing", [])

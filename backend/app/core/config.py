@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     auto_migrate: bool = False
     seed_demo_data: bool = False
 
+    # Assistant dialogue logging (dataset / NLU fine-tuning source).
+    # Records always go to the ``assistant.dialogue`` stdlib logger as
+    # single-line JSON; assistant_dialog_log_path additionally appends
+    # them to a JSONL file. Logging never breaks the chat path.
+    assistant_dialog_logging_enabled: bool = True
+    assistant_dialog_log_path: str | None = None
+
     # Local LLM (OpenAI-compatible HTTP: llama-server, vLLM, Ollama, …).
     # The model name is config only — prompts/tools carry no model-specific
     # tokens, so swapping models is a config change, not a code change.

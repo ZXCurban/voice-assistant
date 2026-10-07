@@ -119,6 +119,33 @@ generic error.
 6. `doctor_name` matching is exact (case-insensitive); partial names
    return `DOCTOR_NOT_FOUND` — list doctors and let the user pick.
 
+## Dialogue logging (dataset / NLU fine-tuning source)
+
+Every assistant turn (one user message → one reply) emits one JSON record
+via the `assistant.dialogue` stdlib logger, in chronological order. A full
+dialogue is all records sharing `conversation_id`, ordered by `ts`.
+Implementation: `app/assistant/dialogue_log.py`; hooks in
+`DialogueManager` (NLU parse, normalized values, every backend action with
+its result, rendered event) and in `app/ai/service.py` (fastpath replies,
+FRIDA clarify shortcut, pre-manager failures). Error turns carry `error`
+and should be filtered out of training data.
+
+Each record holds user/assistant messages, NLU intent + confidence + slots,
+normalized values, the backend actions (`tool`, redacted `request`,
+`status`/`code`, redacted `details`) and the dialogue `event`. Secrets
+(passwords, tokens, API keys, …) are redacted by key name and by value
+pattern; names/phones are kept as NLU slots (synthetic data only).
+
+Configuration (`ASSISTANT_DIALOG_LOGGING_ENABLED`, `ASSISTANT_DIALOG_LOG_PATH`):
+records always go to structured logs; the path additionally appends them to
+a JSONL file. Logging is best effort and never breaks the chat path. There
+is deliberately no HTTP export endpoint — build the dataset offline:
+
+```bash
+python scripts/export_dialogue_logs.py --input var/assistant_dialogues.jsonl \
+  --output data/nlu_dataset.jsonl --stats
+```
+
 ## What is deliberately absent
 
 No ToolRegistry/plugin framework (explicit `handle` dispatch is enough), no

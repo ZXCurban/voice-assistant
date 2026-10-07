@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.fastpath import match_fastpath
 from app.ai.schemas import ChatResponse
+from app.assistant import dialogue_log
 from app.assistant.dialogue import DialogueState
 from app.assistant.dialogue_manager import DialogueManager
 from app.assistant.nlu import parse_utterance
@@ -151,6 +152,18 @@ async def chat(
                 state.last_user_message_hash = sha256(message.encode()).hexdigest()
                 state.last_response = fast
                 state.touch()
+                if dialogue_log.is_enabled():
+                    dialogue_log.emit_turn(
+                        dialogue_log.build_turn(
+                            conversation_id=active_id,
+                            user_message=message,
+                            assistant_message=fast,
+                            clinic_id=state.clinic_id,
+                            phase=state.phase,
+                            event="fastpath",
+                        ),
+                        sink_path=dialogue_log.configured_sink_path(),
+                    )
                 return ChatResponse(conversation_id=active_id, message=fast, model="deterministic")
         try:
             if settings.frida_enabled:
@@ -163,6 +176,22 @@ async def chat(
                     from app.assistant.response import render_event
 
                     reply = render_event("clarification_required", missing=["request"])
+                    if dialogue_log.is_enabled():
+                        dialogue_log.emit_turn(
+                            dialogue_log.build_turn(
+                                conversation_id=active_id,
+                                user_message=message,
+                                assistant_message=reply,
+                                clinic_id=state.clinic_id,
+                                phase=state.phase,
+                                event="clarification_required",
+                                nlu=dialogue_log.nlu_from_parse(
+                                    parsed.intent, parsed.confidence, parsed.slots
+                                ),
+                                normalized=dialogue_log.clean_payload(dict(payload)),
+                            ),
+                            sink_path=dialogue_log.configured_sink_path(),
+                        )
                 else:
                     reply = await _dialogue_manager.handle(session, state, message)
             else:
@@ -180,6 +209,20 @@ async def chat(
             state.last_user_message_hash = sha256(message.encode()).hexdigest()
             state.last_response = reply
             state.touch()
+            if dialogue_log.is_enabled() and not dialogue_log.turn_logged():
+                # Errors inside DialogueManager are already logged there with
+                # the collected NLU/actions; this covers pre-manager failures.
+                dialogue_log.emit_turn(
+                    dialogue_log.build_turn(
+                        conversation_id=active_id,
+                        user_message=message,
+                        assistant_message=reply,
+                        clinic_id=state.clinic_id,
+                        phase=state.phase,
+                        error=type(exc).__name__,
+                    ),
+                    sink_path=dialogue_log.configured_sink_path(),
+                )
     return ChatResponse(conversation_id=active_id, message=reply, model="deterministic")
 
 
