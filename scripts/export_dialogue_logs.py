@@ -1,9 +1,16 @@
-"""Export assistant dialogue logs (JSONL) to an NLU fine-tuning dataset (JSONL).
+"""Export assistant dialogue logs to an NLU fine-tuning dataset (JSONL).
 
-Input: lines emitted by the ``assistant.dialogue`` logger
+Input: turn records emitted by the ``assistant.dialogue`` logger
 (see ``app/assistant/dialogue_log.py``) — one JSON object per assistant turn,
 in chronological order. A full dialogue is all lines sharing
 ``conversation_id``.
+
+Two input flavors are accepted (auto-detected per line):
+
+- pure JSONL (file sink via ``ASSISTANT_DIALOG_LOG_PATH``);
+- raw container output (``docker logs``): the stdlib prefix
+  (``... INFO [assistant.dialogue] ``) is stripped, unrelated lines
+  (uvicorn access logs, ...) are ignored.
 
 Output: one dataset row per user turn::
 
@@ -17,8 +24,8 @@ data only).
 
 Usage:
     python scripts/export_dialogue_logs.py --input var/assistant_dialogues.jsonl
+    docker logs voice-assistant-api-1 2>&1 | python scripts/export_dialogue_logs.py --stats
     python scripts/export_dialogue_logs.py --input logs.jsonl --output dataset.jsonl --stats
-    docker compose logs api | python scripts/export_dialogue_logs.py --output dataset.jsonl
 """
 
 from __future__ import annotations
@@ -30,7 +37,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.assistant.dialogue_log import DialogueTurnLog, group_dialogues  # noqa: E402
+from app.assistant.dialogue_log import (  # noqa: E402
+    DialogueTurnLog,
+    group_dialogues,
+    parse_log_line,
+)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -38,7 +49,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--input",
         default="-",
-        help="JSONL log file (default: stdin). Non-JSON lines are skipped.",
+        help="Log file: pure JSONL or raw `docker logs` output (default: stdin).",
     )
     parser.add_argument("--output", default="-", help="Dataset JSONL path (default: stdout).")
     parser.add_argument(
@@ -56,27 +67,32 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _read_records(source: str) -> tuple[list[DialogueTurnLog], int]:
-    """Read turn records; return (records, skipped_corrupt_lines)."""
+def _read_records(source: str) -> tuple[list[DialogueTurnLog], int, int]:
+    """Read turn records; return (records, corrupt, ignored_unrelated)."""
     if source == "-":
         text = sys.stdin.read()
     else:
         text = Path(source).read_text(encoding="utf-8")
     records: list[DialogueTurnLog] = []
-    skipped = 0
+    corrupt = 0
+    ignored = 0
     for line in text.splitlines():
-        if not line.strip():
-            continue
         try:
-            records.append(DialogueTurnLog.model_validate_json(line))
+            record = parse_log_line(line)
         except ValueError:
-            skipped += 1
-    return records, skipped
+            corrupt += 1
+            continue
+        if record is None:
+            if line.strip():
+                ignored += 1
+            continue
+        records.append(record)
+    return records, corrupt, ignored
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    records, skipped = _read_records(args.input)
+    records, corrupt, ignored = _read_records(args.input)
     dropped_errors = 0
     dropped_confidence = 0
     rows: list[dict[str, object]] = []
@@ -103,7 +119,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"turns={len(records)} conversations={len(group_dialogues(records))} "
             f"rows={len(rows)} dropped_errors={dropped_errors} "
-            f"dropped_confidence={dropped_confidence} skipped_corrupt={skipped}",
+            f"dropped_confidence={dropped_confidence} corrupt={corrupt} "
+            f"ignored_unrelated={ignored}",
             file=sys.stderr,
         )
     return 0

@@ -29,6 +29,22 @@ journalctl --user -u voice-assistant-deploy.service -n 30
 git checkout <sha> && API_PORT=8010 docker compose -p voice-assistant up --build -d
 ```
 
+## Dialogue dataset collection
+
+Chat via `http://<server>:8010/static/chat.html` (or `POST /api/v1/chat`).
+Every turn lands in the api container logs (`assistant.dialogue` JSON).
+Pull and convert to a training set (script accepts raw `docker logs` —
+the stdlib prefix is stripped, unrelated lines ignored):
+
+```bash
+ssh metrica@<server> docker logs voice-assistant-api-1 > dialogue_raw.log
+python scripts/export_dialogue_logs.py --input dialogue_raw.log \
+  --output data/nlu_dataset.jsonl --stats
+```
+
+Container logs rotate at 1 GB × 5 files (`logging` in `docker-compose.yml`),
+so pull the dataset before the oldest chunk ages out.
+
 ## Notes
 
 - Server checkout must stay pristine (no local edits); the script aborts

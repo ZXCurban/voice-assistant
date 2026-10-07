@@ -401,6 +401,27 @@ def parse_jsonl(lines: Iterator[str]) -> Iterator[DialogueTurnLog]:
             yield DialogueTurnLog.model_validate_json(stripped)
 
 
+def parse_log_line(line: str) -> DialogueTurnLog | None:
+    """Parse one log line into a turn record.
+
+    Accepts pure JSONL (file sink) and prefixed lines (``docker logs`` /
+    uvicorn format: ``... INFO [assistant.dialogue] {...}``). Returns None
+    for blanks and unrelated lines (uvicorn access logs, ...). Raises
+    ValueError when the line looks like a turn record but is corrupt.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    if stripped.startswith("{"):
+        return DialogueTurnLog.model_validate_json(stripped)
+    if "assistant.dialogue" not in stripped and "schema_version" not in stripped:
+        return None
+    start = stripped.find("{")
+    if start < 0:
+        return None
+    return DialogueTurnLog.model_validate_json(stripped[start:])
+
+
 def group_dialogues(records: list[DialogueTurnLog]) -> dict[str, list[DialogueTurnLog]]:
     """Group records by conversation, each dialogue in chronological order."""
     grouped: dict[str, list[DialogueTurnLog]] = {}

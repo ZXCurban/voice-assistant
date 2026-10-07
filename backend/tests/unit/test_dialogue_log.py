@@ -210,3 +210,34 @@ def test_group_and_export_helpers() -> None:
     ]
     kept = dialogue_log.to_dataset_items([second], drop_errors=False)
     assert len(kept) == 1 and kept[0]["text"] == "c"
+
+
+def test_parse_log_line_accepts_pure_and_prefixed_lines() -> None:
+    record = dialogue_log.build_turn(
+        conversation_id="conv-9",
+        user_message="Хочу записаться к кардиологу",
+        assistant_message="На какую дату?",
+    )
+    pure = record.to_jsonl()
+    prefixed = "2026-10-07 08:00:21,080 INFO [assistant.dialogue] " + pure
+    uvicorn_prefixed = "INFO:     " + pure
+    assert dialogue_log.parse_log_line(pure) == record
+    assert dialogue_log.parse_log_line(prefixed) == record
+    assert dialogue_log.parse_log_line(uvicorn_prefixed) == record
+
+
+def test_parse_log_line_ignores_blanks_and_unrelated_lines() -> None:
+    assert dialogue_log.parse_log_line("") is None
+    assert dialogue_log.parse_log_line("   ") is None
+    assert dialogue_log.parse_log_line("INFO:     127.0.0.1 - GET /health 200 OK") is None
+    assert (
+        dialogue_log.parse_log_line("2026-10-07 INFO [uvicorn] Application startup complete.")
+        is None
+    )
+
+
+def test_parse_log_line_raises_on_corrupt_record() -> None:
+    with pytest.raises(ValueError):
+        dialogue_log.parse_log_line(
+            '2026-10-07 INFO [assistant.dialogue] {"schema_version": 1, "broken"'
+        )
