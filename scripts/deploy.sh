@@ -45,8 +45,10 @@ else
 fi
 
 echo "[deploy] waiting for API health on port $API_PORT"
+# First start with the NLU profile loads ~1 GB of weights before /health
+# answers (see docker-compose.nlu.yml): allow up to ~3 minutes.
 ok=0
-for i in $(seq 1 30); do
+for i in $(seq 1 90); do
     if curl -fs "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
         ok=1
         break
