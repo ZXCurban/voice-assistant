@@ -1,4 +1,4 @@
-"""AssistantOrchestrator: typed boundary for the LLM/dialogue teammate.
+"""AssistantOrchestrator: typed boundary between dialogue and domain services.
 
 Orchestration only: resolve entities, delegate to existing application
 services, translate errors into AssistantResult. Slot math, booking
@@ -384,6 +384,14 @@ class AssistantOrchestrator:
         slots = await availability_service.search_slots(
             session, clinic_id, request.date, specialty_id=specialty_id, doctor_id=doctor_id
         )
+        clinic = await clinics_service.get_clinic(session, clinic_id)
+        if request.time_after is not None or request.time_at is not None:
+            slots = availability_service.filter_slots_after_local_time(
+                slots,
+                time_after=request.time_after,
+                time_at=request.time_at,
+                clinic_timezone=clinic.timezone,
+            )
         if not slots:
             return AssistantResult(
                 status="not_found",
@@ -396,6 +404,7 @@ class AssistantOrchestrator:
             f"Found {len(slots)} available slots.",
             {
                 "clinic_id": clinic_id,
+                "timezone": clinic.timezone,
                 "slots": [s.model_dump(mode="json") for s in slots],
             },
         )
@@ -413,6 +422,7 @@ class AssistantOrchestrator:
         doctor_id, specialty_id = target
         start = request.date or date_type.today() + timedelta(days=1)
         days = request.days_ahead or 10
+        clinic = await clinics_service.get_clinic(session, clinic_id)
         checked: list[str] = []
         for offset in range(days):
             day = start + timedelta(days=offset)
@@ -420,6 +430,13 @@ class AssistantOrchestrator:
             slots = await availability_service.search_slots(
                 session, clinic_id, day, specialty_id=specialty_id, doctor_id=doctor_id
             )
+            if request.time_after is not None or request.time_at is not None:
+                slots = availability_service.filter_slots_after_local_time(
+                    slots,
+                    time_after=request.time_after,
+                    time_at=request.time_at,
+                    clinic_timezone=clinic.timezone,
+                )
             if slots:
                 return _ok(
                     "OK",
@@ -427,6 +444,7 @@ class AssistantOrchestrator:
                     {
                         "clinic_id": clinic_id,
                         "date": day.isoformat(),
+                        "timezone": clinic.timezone,
                         "slots": [s.model_dump(mode="json") for s in slots],
                     },
                 )
@@ -541,16 +559,23 @@ class AssistantOrchestrator:
             return _clarify("CLINIC_REQUIRED", "No clinic was specified.")
         patient_id = self._patient_id(request)
         if patient_id is None:
-            if request.full_name is not None and request.phone is not None:
-                _, patient_id = await self._ensure_patient(
-                    session, clinic_id, request.full_name, request.phone
-                )
-            else:
+            if request.full_name is None or request.phone is None:
                 return _clarify(
                     "PATIENT_REQUIRED",
-                    "No patient was specified: copy full_name and phone from the "
-                    "dialogue history into this call (ask the user only if absent).",
+                    "No patient was specified: full_name and phone are required.",
                 )
+            try:
+                patient = await patients_service.get_patient_by_phone(
+                    session, clinic_id, request.phone
+                )
+                patient_id = patient.id
+            except NotFoundError:
+                # Creating a patient is a mutation: defer it until the user
+                # confirms the associated appointment below.
+                if request.confirmed:
+                    _, patient_id = await self._ensure_patient(
+                        session, clinic_id, request.full_name, request.phone
+                    )
         doctor = await self._resolve_doctor(session, clinic_id, request)
         if isinstance(doctor, AssistantResult):
             return doctor
@@ -562,10 +587,11 @@ class AssistantOrchestrator:
         else:
             wanted = request.starts_at
         assert wanted is not None
-        try:
-            await patients_service.get_patient(session, clinic_id, patient_id)
-        except NotFoundError as exc:
-            return _not_found(exc.message)
+        if patient_id is not None:
+            try:
+                await patients_service.get_patient(session, clinic_id, patient_id)
+            except NotFoundError as exc:
+                return _not_found(exc.message)
         slot = await self._resolve_slot(session, clinic_id, doctor.id, wanted)
         if isinstance(slot, AssistantResult):
             return slot
@@ -577,8 +603,11 @@ class AssistantOrchestrator:
                     "slot": slot.model_dump(mode="json"),
                     "doctor": _doctor_candidate(doctor),
                     "patient_id": patient_id,
+                    "patient_name": request.full_name,
                 },
             )
+        if patient_id is None:
+            return _invalid("Patient could not be resolved after confirmation.")
         appointment = await appointments_service.book_appointment(
             session,
             AppointmentCreate(

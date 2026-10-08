@@ -93,6 +93,26 @@ def compute_day_slots(
     return result
 
 
+def filter_slots_after_local_time(
+    slots: list[SlotOut],
+    *,
+    clinic_timezone: str,
+    time_after: time | None = None,
+    time_at: time | None = None,
+) -> list[SlotOut]:
+    """Filter generated UTC slots using clinic-local spoken time constraints."""
+    tz = ZoneInfo(clinic_timezone)
+    matching: list[SlotOut] = []
+    for slot in slots:
+        local_time = slot.starts_at.astimezone(tz).time().replace(tzinfo=None)
+        if time_at is not None and local_time != time_at:
+            continue
+        if time_after is not None and local_time <= time_after:
+            continue
+        matching.append(slot)
+    return matching
+
+
 def _validate_target(target: date, now_utc: datetime) -> None:
     if (target - now_utc.date()).days > MAX_HORIZON_DAYS:
         raise ValueError(f"date is beyond the {MAX_HORIZON_DAYS}-day horizon")

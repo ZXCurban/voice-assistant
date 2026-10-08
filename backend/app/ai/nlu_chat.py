@@ -1,7 +1,7 @@
-"""NLU-driven chat turns: the deterministic alternative to the LLM tool loop.
+"""NLU-driven chat turns: the trained-model alternative to the rule-based pipeline.
 
 `NluChatService` owns one DialogueState per conversation (in process
-memory, like the LLM history) and runs a turn through the DialogueManager.
+memory) and runs a turn through the DialogueManager.
 It knows nothing about HTTP or SQLAlchemy: the caller passes the tool
 executor bound to its DB session.
 """
@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from app.dialogue.manager import DialogueManager, ToolExecutor
 from app.dialogue.state import DialogueState, Stage
 from app.nlu.engine import NluEngine, NluUnavailableError, TorchNluEngine
+from app.nlu.schemas import NluParse
 
 if TYPE_CHECKING:
     from app.core.config import Settings
@@ -28,9 +29,9 @@ MAX_CONVERSATIONS = 1000
 class NluChatService:
     """Runs chat turns through NLU + dialogue manager."""
 
-    def __init__(self, engine: NluEngine, *, llm_fallback: bool = False) -> None:
+    def __init__(self, engine: NluEngine, *, defer_unknown: bool = False) -> None:
         self._engine = engine
-        self._llm_fallback = llm_fallback
+        self._defer_unknown = defer_unknown
         self._states: OrderedDict[str, DialogueState] = OrderedDict()
 
     @property
@@ -53,15 +54,20 @@ class NluChatService:
         state = self._states.get(conversation_id)
         return state is not None and state.stage is not Stage.IDLE
 
+    def last_parse(self, conversation_id: str) -> NluParse | None:
+        """The NLU result of the conversation's latest turn (for dialogue logging)."""
+        state = self._states.get(conversation_id)
+        return None if state is None else state.last_parse
+
     def note_reply(self, conversation_id: str, reply: str) -> None:
         """Remember a reply produced elsewhere (fastpath): the next turn's NLU context."""
         self._state(conversation_id).last_response = reply
 
     async def turn(self, conversation_id: str, message: str, execute: ToolExecutor) -> str | None:
-        """Reply to one message, or None if the turn should go to the LLM."""
+        """Reply to one message, or None if the turn should go to the rule-based pipeline."""
         state = self._state(conversation_id)
         manager = DialogueManager(self._engine, execute)
-        return await manager.handle(state, message, allow_defer=self._llm_fallback)
+        return await manager.handle(state, message, allow_defer=self._defer_unknown)
 
     def reset(self) -> None:
         self._states.clear()
@@ -87,15 +93,17 @@ def _load(settings: "Settings") -> NluChatService | None:
             Path(settings.nlu_model_dir), min_confidence=settings.nlu_min_confidence
         )
     except NluUnavailableError:
-        logger.exception("NLU is enabled but cannot be loaded; falling back to the LLM path")
+        logger.exception(
+            "NLU is enabled but cannot be loaded; falling back to the rule-based pipeline"
+        )
         _holder.load_failed = True
         return None
-    _holder.service = NluChatService(engine, llm_fallback=settings.nlu_llm_fallback)
+    _holder.service = NluChatService(engine, defer_unknown=settings.nlu_rules_fallback)
     return _holder.service
 
 
 async def get_nlu_chat(settings: "Settings") -> NluChatService | None:
-    """The NLU service if enabled and loadable, else None (LLM path)."""
+    """The NLU service if enabled and loadable, else None (rule-based pipeline)."""
     if not settings.nlu_enabled:
         return None
     if _holder.service is not None or _holder.load_failed:

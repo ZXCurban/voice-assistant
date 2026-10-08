@@ -6,9 +6,10 @@ tools, slot math and booking rules.
 """
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -186,9 +187,14 @@ def test_chat_endpoint_uses_the_nlu_when_enabled(
     api_client: TestClient, nlu_service: NluChatService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("NLU_ENABLED", "true")
+    from app.api.deps import get_redis_client
     from app.core.config import get_settings
 
     get_settings.cache_clear()
+    overrides = cast(FastAPI, api_client.app).dependency_overrides
+    # Conversation state of the rule-based pipeline is Redis-backed; the NLU path
+    # does not need it, and these tests have no Redis server.
+    overrides[get_redis_client] = lambda: None
     try:
         first = api_client.post("/api/v1/chat", json={"message": "запишите к кардиологу"})
         assert first.status_code == 200
@@ -201,6 +207,7 @@ def test_chat_endpoint_uses_the_nlu_when_enabled(
         )
         assert second.json()["message"] == t.ask_city_spec("cardiology")
     finally:
+        overrides.pop(get_redis_client, None)
         get_settings.cache_clear()
 
 

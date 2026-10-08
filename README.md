@@ -9,7 +9,7 @@ frontend, LLM, STT, or TTS.
 
 - Python 3.13+, FastAPI, Pydantic v2
 - PostgreSQL (SQLAlchemy 2.x async + asyncpg), Alembic
-- Redis (wired, unused by domain logic in MVP — see below)
+- Redis (short-lived, scoped assistant dialogue state)
 - pytest, Ruff, mypy (strict), Docker / Docker Compose, GitHub Actions
 
 ## Structure
@@ -39,10 +39,9 @@ Layering: `api → services → repositories → models/db`. No imports upward.
 ```bash
 cp .env.example .env
 docker compose up --build
-# The api container migrates the schema and loads the idempotent demo
-# seed on startup, so this single command is enough for a fresh clone.
-# API: http://localhost:8000/docs ; health: http://localhost:8000/health
-# chat UI: http://localhost:8000/static/chat.html (needs an LLM server, see below)
+# The local compose profile opts into migrations and synthetic demo seed.
+# API: http://localhost:8000/docs ; liveness: /health ; readiness: /ready
+# chat UI: http://localhost:8000/static/chat.html (deterministic text assistant)
 ```
 
 Manual path (same result, step by step):
@@ -62,58 +61,44 @@ uvicorn app.main:app --reload --app-dir backend
 pytest
 ```
 
-## Local AI chat (prototype)
+## Text assistant pipeline
 
-Conversational layer (LLM tool loop over `AssistantOrchestrator`).
-Requires any OpenAI-compatible chat-completions server
-(`llama-server`, vLLM, Ollama, …):
+`POST /api/v1/chat` and the bundled chat page currently use a deterministic
+Russian intent/slot parser, normalizer, optional FRIDA decision policy,
+`AssistantOrchestrator`, and Jinja2 response templates. No LLM server is
+needed. `conversation_id` resumes Redis-backed workflow state across requests;
+backend execution remains clinic-scoped and confirmation-gated for mutations.
 
-```bash
-# 1. llama-server with Qwen3-4B (Q4_K_M GGUF, ~2.5 GB RAM).
-#    Needs a recent llama.cpp (Qwen3 chat template with thinking support),
-#    enough threads, and -n >= 512 so tool calls are not truncated.
-llama-server -m <path>/Qwen3-4B-Q4_K_M.gguf --port 8080 -c 4096 -t 8 -n 512
-# 2. backend (uses LLM_* env vars, see .env.example)
-LLM_BASE_URL=http://127.0.0.1:8080 uvicorn app.main:app --app-dir backend --port 8001
-# 3. browser
-http://localhost:8001/static/chat.html
-```
+The default parser is a high-precision rules baseline. A trained NLU can take
+over the chat turns (see «Local NLU» below); this repository has no STT/TTS
+integration.
+FRIDA remains disabled by default because its first model load may download
+roughly 1.2 GB; enable it only where the `frida_decisions` runtime and model
+are provisioned. See `docs/architecture.md` and
+`docs/assistant-architecture.md` for current coverage and limitations.
 
-Honest latency note: on CPU one model turn takes tens of seconds to minutes
-(Qwen3-4B generates a few tokens/sec; every assistant turn is 1+ full
-generations). Smalltalk is instant (answered without the model), closing the
-tab aborts the loop, and slow turns surface as `504` with a retry hint —
-but for a snappy demo you want a GPU-backed server or a faster model.
-
-Model swaps are config-only (`LLM_BASE_URL`/`LLM_MODEL`/`LLM_ENABLE_THINKING`/
-`LLM_TOOL_CHOICE`): prompts (`app/ai/prompts.py`), tools (`app/ai/tools.py`)
-and the orchestrator contract carry no model-specific tokens.
-Smalltalk (`привет`, `кто ты`, `что умеешь`, …) is answered instantly by
-`app/ai/fastpath.py` without calling the model; symptom messages
-(`болит нога`) trigger one triage question first (age + city/address),
-then `find_clinics` ranks nearest-first by the `city`/`address` query
-(`app/services/geo.py`; clinics carry optional `city`/`latitude`/`longitude`).
-
-Direct API check: `POST /api/v1/chat {"message": "..."}` (optional
-`conversation_id` continues the dialogue; history is in-memory only).
-Smalltalk (`привет`, `кто ты`, …) answers instantly even with no model
-running; anything else needs the LLM server, otherwise the API returns
-`502 LLM server unavailable`.
-
-## Local NLU (ml-training models, no LLM)
+## Local NLU (ml-training models, optional)
 
 `ml-training` ships a two-stage Russian NLU: a ruBERT **intent classifier**
 (15 intents, calibrated confidence) and a rut5 **slot extractor**
 (`specialty`, `date`, `time`, `city`, `phone`, `full_name`, …). With
-`NLU_ENABLED=true` the chat (`POST /api/v1/chat`) runs on them instead of the
-LLM tool loop:
+`NLU_ENABLED=true` the chat (`POST /api/v1/chat`) lets them answer first:
 
 ```
-message ─▶ emergency regex (112) ─▶ fastpath smalltalk
-        ─▶ NLU (intent + slots, context = previous reply)
+message ─▶ fastpath smalltalk (first turn)
+        ─▶ emergency regex (112) ─▶ NLU (intent + slots, context = previous reply)
         ─▶ DialogueManager (state machine) ─▶ AssistantOrchestrator tools
         ─▶ templated reply  (response.model = "nlu:<version>")
+        └─ NLU not confident on an idle turn ─▶ rule-based pipeline above
 ```
+
+Who answers a turn: the NLU takes it unless (a) the identity is tenant-locked
+(trusted channel with signed claims: always the rule-based pipeline, so clinic
+and patient scoping is enforced in one place), or (b) the rule-based pipeline is
+in the middle of a dialogue (it started one after the NLU handed over an
+unconfident turn, and finishes it). `response.model` tells which one answered:
+`nlu:<version>` or `deterministic`. NLU dialogue state is in process memory;
+the Redis-backed state belongs to the rule-based pipeline.
 
 The dialogue manager is deterministic: it asks for what is missing
 (specialty → date → city → slot → patient → phone/name), never invents
@@ -140,13 +125,13 @@ make up-nlu                 # chat UI: http://localhost:8000/static/chat.html
 ```
 
 Settings: `NLU_ENABLED`, `NLU_MODEL_DIR`, `NLU_MIN_CONFIDENCE` (override the
-calibrated threshold), `NLU_LLM_FALLBACK` (hand utterances the NLU cannot
-parse to the LLM loop; otherwise a clarifying template is returned). If the
-weights cannot be loaded the app logs it and keeps working on the LLM path.
+calibrated threshold), `NLU_RULES_FALLBACK` (default `true`: hand utterances
+the NLU cannot parse to the rule-based pipeline; `false` returns a clarifying
+template instead). If the weights cannot be loaded the app logs it and keeps
+working on the rule-based pipeline.
 Docker: `docker-compose.nlu.yml` builds with `EXTRAS=[nlu]` and mounts
 `./models/nlu` (writable: the joined weights are written there).
-Dialogue state lives in process memory like the LLM history (one worker, or
-sticky sessions). The models are loaded at startup (~1 GB of weights; budget
+NLU dialogue state lives in process memory (one worker, or sticky sessions). The models are loaded at startup (~1 GB of weights; budget
 ~3 GB RAM). CPU latency per turn has not been measured yet.
 
 ## API surfaces
@@ -173,10 +158,10 @@ Voice-assistant mapping: see `docs/voice-map.md` (tool table, booking
 flow, ambiguity and error handling). Reproducible live demo:
 `make demo` (needs migrated + seeded DB and API on `:8000`).
 
-Assistant orchestration (for the AI teammate): `app/assistant/` —
+Assistant orchestration: `app/assistant/` —
 `AssistantRequest` in, `AssistantResult` out via `AssistantOrchestrator`
-(stateless, reuses `app/services/*`; no SQL, no business rules, no
-LLM/STT/TTS). Contract details: `docs/assistant-architecture.md`.
+(stateless, reuses `app/services/*`; no SQL or duplicated business rules).
+Contract details: `docs/assistant-architecture.md`.
 Live orchestrator demo (real PG, no mocks):
 `DATABASE_URL=... python -m app.assistant.demo` from `backend/`.
 
@@ -192,7 +177,8 @@ Live orchestrator demo (real PG, no mocks):
   `uq_appointments_booked_slot ... WHERE status='booked'` is the final
   arbiter; `IntegrityError` → `409`. Cancelling frees the instant.
 - **Rooms** are informational (no capacity checks). Appointment `reason`
-  is optional non-clinical free text. No EMR, no auth in MVP.
+  is optional non-clinical free text. No EMR. Local demo mode has no auth;
+  see the production boundary below.
 
 ## Checks
 
@@ -218,23 +204,36 @@ alembic -c backend/alembic.ini upgrade head
 Never put demo data in migrations — `app/db/seed_demo.py` only
 (idempotent, two clinics: Warsaw + Lisbon).
 
-## Security note (MVP has no auth)
+## Security and deployment boundary
 
-This API is a hackathon/demo backend. **It is not safe for real patient
-data. There is no authentication or authorization.** Anyone with network
-access can list/book/cancel. `clinic_id` is only an application-level
-tenant isolation mechanism for the demo, not a security boundary.
-**Synthetic data only.**
-Production needs authentication, per-clinic roles, rate limiting, audit
-log, and non-sequential IDs before handling real personal/medical data.
+Local/demo mode has no authentication and should use synthetic data only.
+In `APP_ENV=production`, versioned API requests require short-lived HMAC-signed
+headers from a trusted channel gateway:
+
+- `X-Trusted-Channel-Context`: base64url-encoded JSON claims;
+- `X-Trusted-Channel-Signature`: lowercase hex HMAC-SHA256 over the exact
+  encoded context value, using `CHANNEL_CONTEXT_SECRET` (at least 32 bytes).
+
+Claims include `subject`, `role`, `clinic_id`, and `expires_at`. Patient chat
+also requires a verified identity and a patient ID or verified phone plus name.
+Patient records are accessed through chat only; they cannot call raw patient or
+appointment CRUD APIs. Cross-clinic access returns 404. A gateway/identity
+provider that verifies users and signs these claims is not included here, so
+this boundary alone does not make the application ready for real patient data.
+
+Production startup refuses demo seeding and automatic migrations. Deploy
+migrations separately, keep `AUTO_MIGRATE=false` and `SEED_DEMO_DATA=false`,
+and provide `CHANNEL_CONTEXT_SECRET` through a secret manager. `/health` is a
+liveness check; `/ready` checks PostgreSQL and Redis. Rate limiting, audit
+retention, TLS/secret rotation, real gateway integration, and clinical approval
+of specialty-routing rules remain deployment prerequisites.
 
 ## Notes
 
 - `tzdata` is a runtime dependency so `zoneinfo` works in slim images.
 - `aiosqlite` is a dev-only dependency for integration tests.
-- Redis client is wired (`db/redis.py`) but no service uses it yet;
-  slot caching (60s TTL + invalidation on writes) is a documented
-  Phase-2 step, not implemented.
+- Redis stores short-lived, identity- and clinic-scoped dialogue state with
+  per-conversation locking; it is required for `/ready` and multi-worker chat.
 
 ## License
 

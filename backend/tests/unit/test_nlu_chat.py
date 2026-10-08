@@ -10,8 +10,8 @@ SCRIPT: Script = {
 }
 
 
-def _service(*, llm_fallback: bool = False) -> tuple[NluChatService, FakeBackend]:
-    return NluChatService(ScriptedEngine(SCRIPT), llm_fallback=llm_fallback), FakeBackend()
+def _service(*, defer_unknown: bool = False) -> tuple[NluChatService, FakeBackend]:
+    return NluChatService(ScriptedEngine(SCRIPT), defer_unknown=defer_unknown), FakeBackend()
 
 
 async def test_conversations_have_independent_state() -> None:
@@ -39,10 +39,10 @@ async def test_note_reply_becomes_the_next_nlu_context() -> None:
     assert engine.contexts == ["Здравствуйте!"]
 
 
-async def test_unintelligible_turn_is_deferred_only_when_the_llm_fallback_is_on() -> None:
-    service, backend = _service(llm_fallback=True)
+async def test_unintelligible_turn_is_deferred_only_when_deferral_is_on() -> None:
+    service, backend = _service(defer_unknown=True)
     assert await service.turn("a", "абракадабра", backend.execute) is None
-    plain, backend = _service(llm_fallback=False)
+    plain, backend = _service(defer_unknown=False)
     assert await plain.turn("a", "абракадабра", backend.execute) == t.NOT_UNDERSTOOD
 
 

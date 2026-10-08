@@ -1,0 +1,46 @@
+name: Deploy
+
+# CD: deploys the API to the staging server over SSH.
+# Triggers on pushes to main and manually (workflow_dispatch).
+# Passes (green) with a notice until the DEPLOY_* secrets are configured.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST     – server address, e.g. 100.69.153.118
+#   DEPLOY_USER     – ssh user, e.g. metrica
+#   DEPLOY_SSH_KEY  – private OpenSSH key with access to the server
+#   DEPLOY_PATH     – checkout dir on the server, e.g. /home/metrica/voice-assistant
+#   DEPLOY_BRANCH   – branch to deploy (default: main)
+#   API_PORT        – host port for the API (default: 8010)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CD secrets
+        id: gate
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "${DEPLOY_HOST}" ]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::DEPLOY_* secrets are not configured, skipping deploy."
+          else
+            echo "configured=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Deploy over SSH
+        if: steps.gate.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            BRANCH="${{ secrets.DEPLOY_BRANCH }}"
+            cd ${{ secrets.DEPLOY_PATH }} && \
+            API_PORT=${{ secrets.API_PORT }} ./scripts/deploy.sh ${BRANCH:-main}

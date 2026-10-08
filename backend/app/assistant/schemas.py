@@ -1,11 +1,11 @@
-"""Typed contracts between the LLM/intent layer and the backend.
+"""Typed contracts between the NLU/dialogue layer and the backend.
 
-The LLM teammate produces AssistantRequest (intent + extracted entities).
-The backend answers with AssistantResult. No natural language is parsed
-here; no database is touched by the LLM side.
+The parser/normalizer produces AssistantRequest (intent + normalized entities).
+The backend answers with AssistantResult. No natural language is parsed here.
 """
 
 from datetime import date as date_type
+from datetime import time
 from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -53,20 +53,19 @@ class AssistantContext(BaseModel):
     selected_doctor_id: int | None = Field(default=None, gt=0)
     selected_slot: AwareDatetime | None = None
     # Last user-mentioned city/address query (for find_clinics ranking).
-    # The dialogue layer backfills it from message text so the model
-    # cannot lose it between turns; explicit args always win.
+    # The dialogue layer retains the latest resolved city between turns.
     city: str | None = Field(default=None, max_length=200)
 
 
 class AssistantRequest(BaseModel):
-    """Structured intent produced by the LLM layer after extraction."""
+    """Structured intent produced by the parser and normalizer."""
 
     model_config = ConfigDict(from_attributes=True)
 
     intent: AssistantIntent
     clinic_id: int | None = Field(default=None, gt=0)
     # Free-form city/address query for find_clinics ranking ("nearest clinic").
-    # Optional: absent → original order. Model-neutral, validated like the rest.
+    # Optional: absent → original order. Validated like the rest.
     city: str | None = Field(default=None, min_length=2, max_length=200)
     address: str | None = Field(default=None, min_length=2, max_length=500)
     patient_id: int | None = Field(default=None, gt=0)
@@ -77,6 +76,10 @@ class AssistantRequest(BaseModel):
     appointment_id: int | None = Field(default=None, gt=0)
     # Clinic-local day for slot search (YYYY-MM-DD in clinic timezone).
     date: date_type | None = None
+    # Optional clinic-local lower bound for slot searches from spoken phrases.
+    time_after: time | None = None
+    # Optional exact clinic-local time requested by the patient.
+    time_at: time | None = None
     # How many days ahead to scan in find_nearest_slots (default 10, max 30).
     days_ahead: int | None = Field(default=None, ge=1, le=30)
     # Booking / reschedule target instant (must be tz-aware UTC).

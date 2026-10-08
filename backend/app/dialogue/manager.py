@@ -131,7 +131,7 @@ class DialogueManager:
 
         Returns None only when `allow_defer` is set and nothing in the
         utterance could be understood: the caller may then hand the turn
-        to another component (the LLM). Mutating state is left untouched
+        to another component (the rule-based pipeline). Mutating state is left untouched
         in that case.
         """
         if is_emergency(text):
@@ -144,6 +144,7 @@ class DialogueManager:
             sorted(parse.slots),
             state.stage,
         )
+        state.last_parse = parse
         reply = await self._dispatch(state, text, parse, allow_defer=allow_defer)
         return None if reply is None else self._say(state, reply)
 

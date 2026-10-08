@@ -1,0 +1,46 @@
+{% if event == "greeting" %}Здравствуйте! Чем помочь с клиникой — найти врача, свободное время или запись?{% elif event == "continue_dialogue" %}Здравствуйте! Продолжим. {{ prompt }}
+{% elif event == "clarification_required" %}{% set missing = missing|default([]) %}{% if "specialty" in missing %}Поняла. К какому специалисту хотите записаться?{% elif "date" in missing %}На какую дату подобрать время?{% elif "clinic" in missing %}{% if retry|default(false) and specialty_label|default("") %}Да, ищу {{ specialty_label }}. В каком городе или филиале? Например, Варшава или Лиссабон.{% else %}В каком городе или филиале вам удобнее?{% endif %}{% elif "patient" in missing %}Вы уже были пациентом нашей клиники или записываетесь впервые?{% elif "appointment_selection" in missing %}Какую запись выбрать? Назовите номер варианта.{% else %}Не совсем поняла. {{ prompt|default("Что вы хотите сделать: записаться, найти врача или проверить запись?") }}{% endif %}
+{% elif event == "clarification_repeat" %}Не совсем поняла. {{ prompt|default("Повторите, пожалуйста, ответ на мой вопрос.") }}
+{% elif event == "patient_phone_required" %}Назовите номер телефона, указанный при регистрации, чтобы я нашла вашу карточку.
+{% elif event == "health_concern" %}Понимаю, что вас беспокоит. Я не могу ставить диагноз или выбирать лечение, но помогу записаться. К какому специалисту хотите обратиться?
+{% elif event == "appointment_search_started" %}Ищу свободное время по вашим параметрам.
+{% elif event == "appointment_slots_found" %}Доступное время:{% for item in rendered_slots|default([]) %} {{ item.index }} — {{ item.label }};{% endfor %} Какой вариант выбрать?
+{% elif event == "appointment_slot_selected" %}Ближайшее время: {{ slot_label|default("") }}.{% if booking|default(false) %} Если подходит, продолжим оформление записи.{% else %} Если хотите записаться, скажите «запишите меня».{% endif %}
+{% elif event == "specialty_not_available" %}В выбранной клинике нет {{ specialty_label|default(specialty) }}. Назовите другой филиал или город — проверю, где он принимает.
+{% elif event == "confirmation_required" %}{% if action|default("") == "book" %}{% if new_patient|default(false) %}Создать профиль «{{ patient_name }}» и оформить запись на {{ slot_label|default("") }}?{% else %}Записать вас на {{ slot_label|default("") }}?{% endif %}{% elif action|default("") == "cancel" %}Отменить запись{% if appointment_label|default("") %} на {{ appointment_label }}{% endif %}?{% elif action|default("") == "reschedule" %}Перенести запись на {{ new_slot_label|default("") }}?{% else %}Подтвердите действие, пожалуйста.{% endif %} Скажите «да» или «нет».
+{% elif event == "appointment_status" %}{% set items = rendered_appointments|default([]) %}{% if items %}Нашла записи: {% for appointment in items %}{{ appointment.label }} — {{ appointment.status }}{% if appointment.doctor %}, {{ appointment.doctor }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.{% else %}Записей пока нет.{% endif %}
+{% elif event == "tenant_mismatch" %}Этот чат закреплён за клиникой {{ clinic_city|default("выбранного филиала") }}. Продолжим поиск в ней или начните новый чат для другого города.
+{% elif event == "invalid_selection" %}Такого варианта нет. Выберите номер из списка.
+{% elif event == "appointment_not_found" %}Активную запись не нашла.
+{% elif event == "patient_not_found" %}По этому номеру не нашла карточку. Вы записываетесь впервые или хотите проверить номер?
+{% elif event == "patient_name_required" %}Как к вам обращаться? Напишите, пожалуйста, имя и фамилию.
+{% elif event == "invalid_patient_name" %}Не удалось распознать имя и фамилию. Напишите их, пожалуйста, например: «Курбан Далгатов».
+{% elif event == "no_doctors_found" %}В этой клинике не нашла врача такой специальности. Могу проверить другой филиал.
+{% elif event == "backend_error" %}Не удалось выполнить действие. Ничего не изменено; попробуйте ещё раз.
+{% elif event == "invalid_request" %}Сейчас нет действия, которое можно подтвердить. Что вы хотите сделать?
+{% elif event == "workflow_cancelled" %}Хорошо, отменяю текущий запрос. Чем ещё помочь?
+{% elif event == "already_completed" %}Это действие уже выполнено. Повторно ничего не меняла.
+{% elif event == "need_clarification" or event == "specialty_required" %}Уточните, пожалуйста, к какому врачу или на какую специальность вас записать.
+{% elif event == "clinic_required" %}Уточните, пожалуйста, в какой клинике вы хотите записаться.
+{% elif event == "date_required" %}На какую дату подобрать свободное время?
+{% elif event == "not_found" %}Не удалось найти такую запись или специалиста. Уточните данные, пожалуйста.
+{% elif event == "conflict" %}Это время уже недоступно. Давайте подберём другое.
+{% elif event == "invalid_input" %}Не удалось разобрать часть данных. Повторите, пожалуйста, дату или время.
+{% elif event == "confirmation_required" %}Подтвердите, пожалуйста: выполнить это действие?
+{% elif event == "unknown_request" %}Я помогу найти врача и время, записать, перенести или отменить приём. Что вы хотите сделать?
+{% elif event == "no_available_slots" %}На эту дату свободного времени нет. Проверить ближайшие доступные окна или выбрать другую дату?
+{% elif event == "slots_found" %}Нашлось свободное время: {{ time }}.
+{% elif event == "appointment_booked" %}Готово, запись оформлена.
+{% elif event == "appointment_cancelled" %}Запись отменена.
+{% elif event == "appointment_rescheduled" %}Запись перенесена.
+{% elif event == "appointment_completed" %}Приём отмечен как завершённый.
+{% elif event == "patient_created" %}Данные пациента сохранены.
+{% elif event == "no_clinics_found" %}Подходящую клинику найти не удалось.
+{% elif event == "clinics_found" %}Нашла клиники: {{ clinics|join(", ") }}.
+{% elif event == "appointments_found" %}Нашла записи: {{ appointments|length }}.
+{% elif event == "doctors_found" %}{% if single_doctor|default(false) %}Нашла врача {{ names|join(", ") }}. Хотите записаться к нему?{% else %}Нашла врачей: {{ names|join(", ") }}. К какому записать? Назовите фамилию или номер врача.{% endif %}
+{% elif event == "doctor_found" %}Выбрали {{ names|join(", ") }}. Хотите записаться к этому врачу?
+{% elif event == "specialties_found" %}Доступные специальности: {{ names|join(", ") }}.
+{% elif event == "request_succeeded" %}Запрос выполнен.
+{% elif event == "backend_error" %}Сейчас не удалось выполнить запрос. Попробуйте ещё раз позже.
+{% else %}{{ message }}{% endif %}

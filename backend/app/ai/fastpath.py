@@ -1,8 +1,7 @@
-"""Deterministic fastpath: instant RU replies without calling the LLM.
+"""Deterministic fastpath: instant Russian smalltalk replies.
 
 Smalltalk (greetings, identity, capabilities, politeness) never needs
-a model round-trip against a local llama-server: it is slow and the
-small model sometimes answers with filler instead of actions.
+a backend round-trip: it is unnecessary and can be answered safely here.
 This module is pure (no DB, no network, no LLM) so it is cheap to
 unit-test and safe to run before the tool loop.
 
@@ -71,7 +70,7 @@ def _normalize(text: str) -> str:
 
 
 def match_fastpath(message: str, *, has_pending_confirmation: bool = False) -> str | None:
-    """Return an instant reply for smalltalk, or None to use the LLM.
+    """Return an instant reply for smalltalk, or None to continue the pipeline.
 
     When a confirmation preview is pending, always return None so that
     «да/нет/отмена» reach the booking flow instead of a template.

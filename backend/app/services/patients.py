@@ -51,6 +51,12 @@ async def get_patient_by_phone(session: AsyncSession, clinic_id: int, phone: str
     return patient
 
 
+async def list_patients(session: AsyncSession, clinic_id: int, *, limit: int = 2) -> list[Patient]:
+    """Return a small clinic-scoped candidate set for unambiguous resolution."""
+    await require_clinic(session, clinic_id)
+    return await patients_repo.list_patients(session, clinic_id, limit=limit)
+
+
 async def get_or_create_patient(
     session: AsyncSession, clinic_id: int, full_name: str, phone: str
 ) -> tuple[Patient, bool]:

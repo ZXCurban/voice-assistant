@@ -1,4 +1,4 @@
-# NLU chat (ml-training models, no LLM server needed):
+# NLU chat (ml-training models):
 #   docker compose -f docker-compose.yml -f docker-compose.nlu.yml up -d --build
 # The weights live in ./models/nlu (split in git, joined on first start), so
 # the mount must be writable. First start loads ~1 GB of models: give the api
@@ -14,7 +14,7 @@ services:
     environment:
       NLU_ENABLED: "true"
       NLU_MODEL_DIR: /models/nlu
-      NLU_LLM_FALLBACK: "false"
+      NLU_RULES_FALLBACK: "true"
     volumes:
       - ./models/nlu:/models/nlu
     # No --reload: it would reload the models on every file change.

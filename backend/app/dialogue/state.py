@@ -1,9 +1,11 @@
-"""Per-conversation dialogue state (in-process memory, like the LLM history)."""
+"""Per-conversation dialogue state (in-process memory)."""
 
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 from typing import Any, Literal
+
+from app.nlu.schemas import NluParse
 
 
 class Flow(StrEnum):
@@ -103,6 +105,8 @@ class DialogueState:
     chosen_slot: SlotOption | None = None
     chosen_record: RecordOption | None = None
     pending: PendingAction | None = None
+    # What the NLU made of the latest utterance (read by the service for logging).
+    last_parse: NluParse | None = None
 
     def reset_flow(self) -> None:
         """Forget the current task, keep what identifies the user (clinic, patient)."""
