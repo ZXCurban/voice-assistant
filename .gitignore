@@ -20,6 +20,9 @@ htmlcov/
 # Alembic revisions ARE tracked (backend/alembic/versions/*.py): a fresh
 # clone must run `alembic upgrade head` with zero local generation.
 
+# NLU weights (ml-training artifacts) are large and never committed
+models/
+
 # Docker / data
 pgdata/
 redisdata/

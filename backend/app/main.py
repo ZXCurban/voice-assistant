@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.ai.nlu_chat import get_nlu_chat
 from app.api.errors import register_exception_handlers
 from app.api.v1 import api_router
 from app.core.config import get_settings
@@ -26,6 +27,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     configure_logging(settings.log_level)
     get_engine()
     get_redis_client()
+    # Load the NLU models up front (no-op unless NLU_ENABLED) so the first
+    # chat turn does not pay for it. A load failure is logged, not fatal.
+    await get_nlu_chat(settings)
     yield
     await dispose_engine()
     await close_redis_client()

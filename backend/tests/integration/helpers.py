@@ -30,6 +30,7 @@ async def make_clinic(
     session: AsyncSession,
     *,
     name: str = "Clinic One",
+    city: str | None = None,
     timezone: str = "Europe/Warsaw",
     specialty: str = "Cardiology",
     doctor_name: str = "Jan Kowalski",
@@ -39,7 +40,7 @@ async def make_clinic(
     doctor_days: tuple[int, ...] = (0,),
 ) -> ClinicRefs:
     clinic = await clinics_service.create_clinic(
-        session, ClinicCreate(name=name, timezone=timezone)
+        session, ClinicCreate(name=name, city=city, timezone=timezone)
     )
     spec = await catalog_service.create_specialty(
         session, SpecialtyCreate(clinic_id=clinic.id, name=specialty)

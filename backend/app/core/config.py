@@ -40,6 +40,19 @@ class Settings(BaseSettings):
     llm_enable_thinking: bool = False
     llm_tool_choice: str = "auto"
 
+    # Local NLU (ml-training models: ruBERT intent + rut5 slots) driving a
+    # deterministic dialogue manager. Off by default: it needs the optional
+    # `nlu` extra and the trained weights (see docs/assistant-architecture.md).
+    nlu_enabled: bool = False
+    # ml-training `artifacts/` directory: intent/pytorch, slots/pytorch,
+    # intent/calibration.json.
+    nlu_model_dir: str = "models/nlu"
+    # Overrides the calibrated confidence threshold (default: calibration.json).
+    nlu_min_confidence: float | None = None
+    # Hand turns the NLU cannot understand to the LLM tool loop instead of
+    # answering with a clarifying template.
+    nlu_llm_fallback: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

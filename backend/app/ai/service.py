@@ -1,6 +1,10 @@
-"""Agentic chat service: LLM tool loop over AssistantOrchestrator.
+"""Chat service: NLU dialogue manager and/or LLM tool loop over AssistantOrchestrator.
 
-Each turn the model may call backend tools (clinics, doctors, slots,
+Order of a turn: fastpath smalltalk → NLU + dialogue manager (when
+NLU_ENABLED and the models load) → LLM tool loop (default path, and the
+fallback for turns the NLU cannot understand when NLU_LLM_FALLBACK is on).
+
+LLM tool loop: each turn the model may call backend tools (clinics, doctors, slots,
 booking, …). Tool results come from the real services layer, so the
 model presents facts instead of inventing them. History stays in process
 memory; booking confirmation flows through the orchestrator's
@@ -19,11 +23,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import build_client
 from app.ai.fastpath import match_fastpath
+from app.ai.nlu_chat import get_nlu_chat, install_nlu_chat
 from app.ai.prompts import SYSTEM_PROMPT
 from app.ai.schemas import ChatResponse
 from app.ai.tools import TOOLS, execute_tool
 from app.assistant.schemas import AssistantContext
 from app.core.config import get_settings
+from app.dialogue.manager import ToolExecutor
 from app.services import geo as geo_service
 
 logger = logging.getLogger(__name__)
@@ -187,6 +193,15 @@ def _system_prompt() -> str:
     )
 
 
+def _executor(session: AsyncSession) -> ToolExecutor:
+    """Tool executor for the deterministic dialogue layer (full slot lists)."""
+
+    async def run(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        return await execute_tool(session, name, arguments, limit_slots=False)
+
+    return run
+
+
 async def chat(
     message: str,
     conversation_id: str | None = None,
@@ -206,12 +221,24 @@ async def chat(
     history.append({"role": "user", "content": message})
     _trim(history)
 
+    nlu = await get_nlu_chat(settings)
+
     # Deterministic smalltalk first: instant reply, zero LLM cost.
-    # Never fires while a booking preview waits for «да/нет».
-    fast = match_fastpath(message, has_pending_confirmation=_has_pending_confirmation(history))
+    # Never fires while a booking preview waits for «да/нет» (LLM path) or
+    # while the NLU dialogue waits for an answer to its own question.
+    waiting = _has_pending_confirmation(history) or (nlu is not None and nlu.in_dialogue(active_id))
+    fast = match_fastpath(message, has_pending_confirmation=waiting)
     if fast is not None:
         history.append({"role": "assistant", "content": fast})
+        if nlu is not None:
+            nlu.note_reply(active_id, fast)
         return ChatResponse(conversation_id=active_id, message=fast, model=settings.llm_model)
+
+    if nlu is not None:
+        nlu_reply = await nlu.turn(active_id, message, _executor(session))
+        if nlu_reply is not None:
+            history.append({"role": "assistant", "content": nlu_reply})
+            return ChatResponse(conversation_id=active_id, message=nlu_reply, model=nlu.model_name)
 
     client = build_client(settings)
     reply = "Не получилось обработать запрос, попробуйте переформулировать, пожалуйста."
@@ -267,3 +294,4 @@ def reset_conversations() -> None:
     """Drop all in-memory history (tests and local restarts)."""
     _conversations.clear()
     _contexts.clear()
+    install_nlu_chat(None)

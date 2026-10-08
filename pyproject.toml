@@ -27,6 +27,16 @@ dev = [
   "mypy>=1.11",
 ]
 
+# Local NLU (ml-training models). Heavy and optional: the rest of the backend
+# imports nothing from these packages. Install with: pip install ".[nlu]"
+nlu = [
+  "torch>=2.2",
+  # 5.x is not verified against the trained checkpoints.
+  "transformers>=4.41,<5",
+  # rut5 tokenizer (spiece.model) needs it.
+  "sentencepiece>=0.2",
+]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -58,6 +68,14 @@ warn_unreachable = true
 show_error_codes = true
 ignore_missing_imports = false
 plugins = []
+
+# torch/transformers are optional (extra "nlu") and only used behind lazy
+# imports in app.nlu.engine. They are treated as untyped so mypy gives the
+# same result with and without them installed.
+[[tool.mypy.overrides]]
+module = ["torch", "transformers"]
+ignore_missing_imports = true
+follow_imports = "skip"
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]

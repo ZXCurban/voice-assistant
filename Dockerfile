@@ -9,7 +9,9 @@ WORKDIR /code
 COPY pyproject.toml README.md ./
 COPY backend/ ./backend/
 
-RUN pip install --upgrade pip && pip install .
+# EXTRAS="[nlu]" adds torch/transformers for the local NLU (large image, see README).
+ARG EXTRAS=""
+RUN pip install --upgrade pip && pip install ".${EXTRAS}"
 
 WORKDIR /code/backend
 

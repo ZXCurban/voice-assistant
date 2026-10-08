@@ -100,6 +100,48 @@ Smalltalk (`привет`, `кто ты`, …) answers instantly even with no mo
 running; anything else needs the LLM server, otherwise the API returns
 `502 LLM server unavailable`.
 
+## Local NLU (ml-training models, no LLM)
+
+`ml-training` ships a two-stage Russian NLU: a ruBERT **intent classifier**
+(15 intents, calibrated confidence) and a rut5 **slot extractor**
+(`specialty`, `date`, `time`, `city`, `phone`, `full_name`, …). With
+`NLU_ENABLED=true` the chat (`POST /api/v1/chat`) runs on them instead of the
+LLM tool loop:
+
+```
+message ─▶ emergency regex (112) ─▶ fastpath smalltalk
+        ─▶ NLU (intent + slots, context = previous reply)
+        ─▶ DialogueManager (state machine) ─▶ AssistantOrchestrator tools
+        ─▶ templated reply  (response.model = "nlu:<version>")
+```
+
+The dialogue manager is deterministic: it asks for what is missing
+(specialty → date → city → slot → patient → phone/name), never invents
+facts, and every mutation goes through the orchestrator's confirm step
+(the preview is shown, only «да» books/cancels/reschedules). Replies are the
+exact phrases the models were trained on, so the previous reply is a valid
+NLU context. Typos and model slips are covered by deterministic fallbacks
+(phone/name verification against the typed text, fuzzy specialty and
+«завтра», doctor surnames in any Russian case, `+48`/`+351` normalisation).
+
+```bash
+pip install ".[nlu]"        # torch + transformers + sentencepiece (CPU wheel is enough)
+# weights: the ml-training `artifacts/` directory
+#   intent/pytorch, intent/calibration.json, slots/pytorch
+python -m app.nlu.smoke --model-dir ../ml-training/artifacts     # from backend/, no DB needed
+NLU_ENABLED=true NLU_MODEL_DIR=../ml-training/artifacts \
+  uvicorn app.main:app --app-dir backend --port 8001             # chat UI: /static/chat.html
+```
+
+Settings: `NLU_ENABLED`, `NLU_MODEL_DIR`, `NLU_MIN_CONFIDENCE` (override the
+calibrated threshold), `NLU_LLM_FALLBACK` (hand utterances the NLU cannot
+parse to the LLM loop; otherwise a clarifying template is returned). If the
+weights cannot be loaded the app logs it and keeps working on the LLM path.
+Docker: `docker build --build-arg EXTRAS="[nlu]" .` and mount the weights at
+`NLU_MODEL_DIR`. Dialogue state lives in process memory like the LLM history
+(one worker, or sticky sessions). The models are loaded at startup (~1 GB RAM);
+a CPU turn takes well under a second.
+
 ## API surfaces
 
 `GET /health` stays at root. Everything else under `/api/v1`.

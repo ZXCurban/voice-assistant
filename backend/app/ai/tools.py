@@ -181,11 +181,15 @@ async def execute_tool(
     name: str,
     arguments: dict[str, Any],
     context: AssistantContext | None = None,
+    *,
+    limit_slots: bool = True,
 ) -> dict[str, Any]:
     """Validate args, run through the orchestrator, return JSON-safe result.
 
     Sticky conversation context fills ids the model omitted; explicit
-    arguments always win (enforced by the orchestrator).
+    arguments always win (enforced by the orchestrator). `limit_slots`
+    caps slot lists for the LLM's context window; the deterministic
+    dialogue layer passes False and filters/pages the full list itself.
     """
     if name not in TOOL_NAMES:
         return {
@@ -209,7 +213,7 @@ async def execute_tool(
     result = await _orchestrator.handle(session, request)
     logger.info("tool %s args=%s -> %s/%s", name, arguments, result.status, result.code)
     payload = result.model_dump(mode="json")
-    if name in ("find_slots", "find_nearest_slots"):
+    if limit_slots and name in ("find_slots", "find_nearest_slots"):
         slots = (payload.get("details") or {}).get("slots") or []
         if len(slots) > MAX_SLOTS_FOR_MODEL:
             payload["details"]["slots"] = slots[:MAX_SLOTS_FOR_MODEL]

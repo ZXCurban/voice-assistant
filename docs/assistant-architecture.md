@@ -119,3 +119,41 @@ No ToolRegistry/plugin framework (explicit `handle` dispatch is enough),
 no conversation-history storage, no Redis, no auth, no LLM/STT/TTS SDKs.
 `AssistantOrchestrator` is stateless; all state lives in the dialogue
 layer (`AssistantContext`) or PostgreSQL.
+
+## NLU front end (ml-training models)
+
+The «LLM / Intent & Entity Extraction» box can be filled by the trained
+NLU instead of a general LLM (`NLU_ENABLED=true`, README «Local NLU»):
+
+```text
+user text ──▶ app/dialogue/emergency.py   (112 pre-filter, before any model)
+          ──▶ app/nlu/engine.py           (ruBERT intent + rut5 slots → NluParse)
+          ──▶ app/dialogue/manager.py     (DialogueManager state machine)
+          ──▶ ToolExecutor = execute_tool(..., limit_slots=False)
+          ──▶ AssistantOrchestrator       (unchanged contract)
+```
+
+Rules of the split stay the same: the dialogue layer never computes
+availability or touches repositories; it speaks only the tool contract
+(`find_clinics / find_doctors / find_slots / find_nearest_slots /
+find_patient / get_appointments / book / cancel / reschedule`) and honours
+the confirmation model — it calls a mutating tool with `confirmed=false`,
+shows the preview, and repeats the call with `confirmed=true` only after the
+user's «да». For a patient who does not exist yet, the preview is skipped
+(`book_appointment` with `full_name`+`phone` would register them) and the
+registration happens together with the confirmed booking.
+
+| Module | Role |
+| --- | --- |
+| `app/nlu/contract.py` | Intents, slot vocabulary, slot cleaning (mirror of `ml-training/src/contract.py`) |
+| `app/nlu/engine.py` | `NluEngine` protocol, `TorchNluEngine` (mirror of `evaluate.py`: temperature, threshold, beam search) |
+| `app/nlu/fallbacks.py`, `values.py` | Deterministic helpers: phone/name/specialty/date, doctor surname matching, phone normalisation |
+| `app/dialogue/manager.py` | Flows BOOK / SLOTS / DOCTORS / CLINICS / CANCEL / RESCHEDULE / RECORDS |
+| `app/dialogue/templates.py` | Reply phrases (the training flows' wording: the next turn's NLU context) |
+| `app/ai/nlu_chat.py` | Per-conversation `DialogueState`, model loading, LLM fallback hook |
+
+The NLU context is the first 200 characters of the previous reply, so any
+detail (doctor, clinic) is appended *after* the template sentence.
+Patient lookup by phone ignores spaces/dashes/brackets
+(`repositories/patients.py`), because voice input and the stored value
+rarely share a format.
