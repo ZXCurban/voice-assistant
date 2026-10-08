@@ -49,9 +49,12 @@ async def test_nlu_answers_and_names_itself(engine: ScriptedEngine) -> None:
 
 
 async def test_unconfident_turn_goes_to_the_rule_based_pipeline(engine: ScriptedEngine) -> None:
-    first = await chat_service.chat("Хочу записаться к кардиологу", "b", session=SESSION)
+    # No specialty/date/city in the text: the scripted model is unconfident and
+    # the deterministic fallback extractors find nothing, so the turn is
+    # handed to the rule-based pipeline (which asks for the specialty).
+    first = await chat_service.chat("хочу записаться", "b", session=SESSION)
     assert first.model == "deterministic"
-    assert "дату" in first.message
+    assert "специалисту" in first.message
     asked = len(engine.contexts)
     # The rule-based dialogue is now in progress: it keeps the turn, the NLU is not asked.
     second = await chat_service.chat("завтра", "b", session=SESSION)
