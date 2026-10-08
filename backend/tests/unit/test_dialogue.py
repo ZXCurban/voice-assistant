@@ -154,13 +154,13 @@ async def test_specialty_missing_in_clinic_asks_for_another_city() -> None:
     assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
 
 
-async def test_no_slots_offers_nearest_windows() -> None:
+async def test_no_slots_directly_offers_nearest_windows() -> None:
+    # No extra «проверить ближайшие?» turn: the nearest offer follows at once.
     chat = Chat(BOOK_SCRIPT)
     await chat.say("хочу записаться к кардиологу")
     await chat.say("сегодня")
-    assert await chat.say("в Москве") == t.NO_SLOTS
-    listing = await chat.say("да")
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
+    listing = await chat.say("в Москве")
+    assert listing.startswith(t.NO_SLOTS_AUTO + "Доступное время: 1 — 09.10 в 09:00")
 
 
 async def test_time_after_filters_the_offered_slots() -> None:
@@ -362,6 +362,31 @@ async def test_emergency_is_answered_before_the_nlu() -> None:
     assert chat.engine.contexts == []
 
 
+async def test_emergency_phrases_from_real_dialogues() -> None:
+    chat = Chat(BOOK_SCRIPT)
+    for text in (
+        "человек истекает кровью",
+        "человек умирает",
+        "вызовите скорую помощь",
+        "скорая помощь",
+        "он не дышит",
+        "кровь не останавливается",
+    ):
+        assert await chat.say(text) == EMERGENCY_REPLY
+
+
+async def test_non_emergency_lookalikes_stay_in_the_flow() -> None:
+    chat = Chat(BOOK_SCRIPT)
+    for text in (
+        "сдача крови",
+        "анализ крови",
+        "давление скачет",
+        "срочно запишите меня",
+        "болит голова",
+    ):
+        assert await chat.say(text) != EMERGENCY_REPLY
+
+
 async def test_health_concern_leads_to_a_specialty_question() -> None:
     script: Script = {
         "болит голова": ("health_concern", {}),
@@ -385,6 +410,17 @@ async def test_unintelligible_turn_can_be_deferred_to_the_llm() -> None:
     chat = Chat({})
     assert await chat.manager.handle(chat.state, "абракадабра", allow_defer=True) is None
     assert chat.state.last_response == ""
+
+
+async def test_colloquial_go_ahead_confirms_the_booking() -> None:
+    chat = Chat(BOOK_SCRIPT)
+    await _to_slot_list(chat)
+    await chat.say("самый ранний")
+    await chat.say("впервые")
+    await chat.say("Иван Сидоров")
+    await chat.say("+7 921 000 00 02")
+    # «пойдет» is not in the script: the model is unsure, the yes/no rule decides.
+    assert (await chat.say("пойдет")).startswith(t.BOOKED)
 
 
 async def test_low_confidence_confirm_falls_back_to_plain_yes() -> None:
@@ -431,6 +467,15 @@ async def test_find_clinics_by_city_lists_only_that_city() -> None:
     assert "Казань" not in reply
 
 
+async def test_doctor_pronoun_matches_gender() -> None:
+    assert t.doctors_found("Андрей Волков").endswith("к нему?")
+    assert t.doctors_found("Анна Смирнова").endswith("к ней?")
+    assert t.doctors_found("Оксана Пак").endswith("к ней?")
+    assert t.doctors_found("Владимир Ким").endswith("к нему?")
+    assert t.doctors_found("Любовь Анисимова").endswith("к ней?")
+    assert t.doctors_found("Игорь Соколов").endswith("к нему?")
+
+
 async def test_find_doctors_then_book_with_the_found_doctor() -> None:
     script: Script = {
         "есть ли кардиолог": ("find_doctors", {"specialty": "cardiology"}),
@@ -440,7 +485,7 @@ async def test_find_doctors_then_book_with_the_found_doctor() -> None:
     }
     chat = Chat(script)
     assert await chat.say("есть ли кардиолог") == t.ask_city_spec("cardiology")
-    assert await chat.say("Москва") == t.DOCTORS_FOUND.format(doc="Андрей Волков")
+    assert await chat.say("Москва") == t.doctors_found("Андрей Волков")
     assert await chat.say("да") == t.ASK_DATE
     listing = await chat.say("завтра")
     assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
@@ -466,12 +511,12 @@ async def test_cancel_go_ahead_is_not_read_as_a_refusal() -> None:
     assert chat.backend.appointments[0]["status"] == "cancelled"
 
 
-async def test_another_date_after_no_free_time_asks_for_the_date() -> None:
+async def test_another_date_while_choosing_asks_for_the_date() -> None:
     script: Script = {**BOOK_SCRIPT, "давайте другую дату": ("reject", {})}
     chat = Chat(script)
     await chat.say("хочу записаться к кардиологу")
     await chat.say("сегодня")
-    assert await chat.say("в Москве") == t.NO_SLOTS
+    await chat.say("в Москве")  # auto-nearest offer, choosing stage
     assert await chat.say("давайте другую дату") == t.ASK_DATE
     assert (await chat.say("завтра")).startswith("Доступное время: 1 — 09.10 в 09:00")
 
@@ -570,9 +615,39 @@ async def test_misspelled_specialty_beats_a_wrong_model_guess() -> None:
     assert chat.state.wants["specialty"] == "cardiology"
 
 
+async def test_nearest_request_keeps_the_search_context() -> None:
+    # «ближайшее окно» after BOOK refines the search instead of starting over.
+    script: Script = {**BOOK_SCRIPT, "ближайшее окно": ("find_nearest_slots", {})}
+    chat = Chat(script)
+    await chat.say("хочу записаться к кардиологу")
+    await chat.say("завтра")
+    await chat.say("в Москве")
+    assert chat.state.stage is Stage.SELECT_SLOT
+    listing = await chat.say("ближайшее окно")
+    assert listing.startswith("Доступное время: 1 — ")
+    assert chat.state.wants.get("specialty") == "cardiology"
+
+
+async def test_new_search_inside_slot_choice_researches() -> None:
+    # A city answer while choosing a slot changes the city (no «не поняла»).
+    chat = Chat(BOOK_SCRIPT)
+    await _to_slot_list(chat)
+    assert chat.state.stage is Stage.SELECT_SLOT
+    assert await chat.say("в Казани") == t.spec_na("cardiology")
+    assert chat.state.wants.get("specialty") == "cardiology"
+
+
+async def test_bare_book_request_while_choosing_is_not_a_search() -> None:
+    # «запишите меня» without a chosen slot is still a nudge, not a search.
+    script: Script = {**BOOK_SCRIPT, "запишите меня": ("book_appointment", {})}
+    chat = Chat(script)
+    listing = await _to_slot_list(chat)
+    assert await chat.say("запишите меня") == t.repeat(listing)
+
+
 async def test_stale_model_city_is_overruled_by_the_text() -> None:
-    # The trained NLU still emits its old city vocabulary («warszawa» for
-    # Moscow): the deterministic guard drops what the text does not say.
+    # The trained NLU still emits its old city vocabulary for Moscow:
+    # the deterministic guard drops what the text does not say.
     script: Script = {
         "хочу записаться к кардиологу": ("book_appointment", {"specialty": "cardiology"}),
         "завтра": ("unknown_request", {"date": "tomorrow"}),

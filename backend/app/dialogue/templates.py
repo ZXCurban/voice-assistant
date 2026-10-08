@@ -19,6 +19,8 @@ NO_SLOTS = (
     "На эту дату свободного времени нет. "
     "Проверить ближайшие доступные окна или выбрать другую дату?"
 )
+# Prefix for the automatic nearest-windows offer (no extra turn).
+NO_SLOTS_AUTO = "На эту дату свободного времени нет. "
 SELECT_RECORD = "Какую запись выбрать? Назовите номер варианта."
 BOOKED = "Готово, запись оформлена."
 CANCELLED = "Запись отменена."
@@ -44,7 +46,30 @@ GREET_REPLIES = (
 PATIENT_NOT_FOUND = (
     "По этому номеру не нашла карточку. Вы записываетесь впервые или хотите проверить номер?"
 )
-DOCTORS_FOUND = "Нашла врача {doc}. Хотите записаться к нему?"
+
+#: First names ending in a soft sign that are feminine (masculine ones like
+#: Игорь/Павел are covered by the consonant rule in _looks_feminine).
+_FEMININE_SOFT = frozenset({"любовь"})
+
+
+def _looks_feminine(word: str) -> bool:
+    """Heuristic gender guess for a Russian name token."""
+    lowered = word.lower()
+    return lowered.endswith(("а", "я")) or lowered in _FEMININE_SOFT
+
+
+def doctors_found(full_name: str) -> str:
+    """«Нашла врача …» with the right pronoun (к ней / к нему).
+
+    The surname decides first («Смирнова» → she); gender-neutral surnames
+    (Ким, Пак) fall back to the first name («Оксана Пак» → she).
+    """
+    parts = full_name.split()
+    surname = parts[-1] if parts else ""
+    first = parts[0] if parts else ""
+    pronoun = "ней" if _looks_feminine(surname) or _looks_feminine(first) else "нему"
+    return f"Нашла врача {full_name}. Хотите записаться к {pronoun}?"
+
 
 # Phrases that were not part of the training flows. They are only ever
 # produced where a free-form reply is expected or the dialogue ends.

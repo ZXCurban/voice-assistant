@@ -76,3 +76,17 @@ async def test_fastpath_greeting_feeds_the_next_nlu_context(engine: ScriptedEngi
     assert greeting.model == "deterministic"
     await chat_service.chat("хочу записаться к кардиологу", "d", session=SESSION)
     assert engine.contexts == [greeting.message]
+
+
+async def test_fastpath_identity_works_beyond_the_first_turn(
+    engine: ScriptedEngine,
+) -> None:
+    # «ты кто» mid-dialogue introduces the bot instead of confusing the NLU.
+    await chat_service.chat("хочу записаться к кардиологу", "e", session=SESSION)
+    await chat_service.chat("завтра", "e", session=SESSION)
+    reply = await chat_service.chat("ты кто", "e", session=SESSION)
+    assert reply.model == "deterministic"
+    assert "консьерж" in reply.message
+    # ...and the NLU dialogue resumes on the next turn with synced context.
+    follow_up = await chat_service.chat("в Москве", "e", session=SESSION)
+    assert follow_up.model == "nlu:scripted"

@@ -38,7 +38,7 @@
 {% elif event == "no_clinics_found" %}Подходящую клинику найти не удалось.
 {% elif event == "clinics_found" %}Нашла клиники: {{ clinics|join(", ") }}.
 {% elif event == "appointments_found" %}Нашла записи: {{ appointments|length }}.
-{% elif event == "doctors_found" %}{% if single_doctor|default(false) %}Нашла врача {{ names|join(", ") }}. Хотите записаться к нему?{% else %}Нашла врачей: {{ names|join(", ") }}. К какому записать? Назовите фамилию или номер врача.{% endif %}
+{% elif event == "doctors_found" %}{% if single_doctor|default(false) %}Нашла врача {{ names|join(", ") }}. Хотите записаться?{% else %}Нашла врачей: {{ names|join(", ") }}. К какому записать? Назовите фамилию или номер врача.{% endif %}
 {% elif event == "doctor_found" %}Выбрали {{ names|join(", ") }}. Хотите записаться к этому врачу?
 {% elif event == "specialties_found" %}Доступные специальности: {{ names|join(", ") }}.
 {% elif event == "request_succeeded" %}Запрос выполнен.

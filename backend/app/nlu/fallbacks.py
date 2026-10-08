@@ -47,6 +47,7 @@ _YES_WORDS = frozenset(
         "подтверждаю",
         "верно",
         "давайте",
+        "давай",
         "хорошо",
         "ок",
         "окей",
@@ -55,7 +56,25 @@ _YES_WORDS = frozenset(
         "пожалуйста",
         "записывайте",
         "запишите",
+        "запиши",
+        "записывай",
         "оформляйте",
+        "оформляй",
+        # Colloquial go-aheads from real dialogues («пойдет», «сойдет»):
+        "пойдет",
+        "сойдет",
+        "нормально",
+        "норм",
+        "ладно",
+        "годится",
+        "подходит",
+        "подойдет",
+        "устроит",
+        "устраивает",
+        "отлично",
+        "супер",
+        "класс",
+        "идет",
     }
 )
 _NO_WORDS = frozenset({"нет", "неа", "не", "отмена", "отменить", "стоп", "хватит", "отбой"})
@@ -204,6 +223,9 @@ def detect_yes_no(text: str) -> str | None:
     if any(phrase in normalized for phrase in _NO_PHRASES) or words[0] in _NO_WORDS:
         return "no"
     if words[0] in _YES_WORDS:
+        return "yes"
+    if "да" in words and not any(word in ("не", "нет", "ни") for word in words):
+        # «дура. да», «ну да, записывай»: grumpy but unambiguous agreement.
         return "yes"
     return None
 

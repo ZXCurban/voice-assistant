@@ -204,14 +204,14 @@ async def chat(
             state.patient_phone = principal.verified_phone
             state.patient_full_name = principal.full_name
         nlu = None if principal.tenant_locked else await get_nlu_chat(settings)
-        nlu_in_dialogue = nlu is not None and nlu.in_dialogue(active_id)
-        first_turn = state.last_user_message_hash is None
-        if (
-            first_turn
-            and not nlu_in_dialogue
-            and state.phase in {"START", "COMPLETED", "CANCELLED"}
-        ):
-            fast = match_fastpath(message, has_pending_confirmation=False)
+        # Smalltalk is answered instantly on any idle turn, not just the first:
+        # «ты кто» mid-dialogue should introduce the bot, not confuse it.
+        # The NLU dialogue state is left untouched, so it resumes next turn
+        # (its context is synced via note_reply below).
+        if state.phase in {"START", "COMPLETED", "CANCELLED"} and state.pending_action is None:
+            fast = match_fastpath(
+                message, has_pending_confirmation=state.pending_action is not None
+            )
             if fast is not None:
                 if nlu is not None:
                     nlu.note_reply(active_id, fast)

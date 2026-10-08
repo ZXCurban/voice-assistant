@@ -78,6 +78,8 @@ _FLOW_BY_INTENT: dict[str, Flow] = {
     "get_appointment": Flow.RECORDS,
 }
 _SEARCH_KEYS = ("specialty", "date", "time", "time_after", "doctor")
+#: Intents that always start (or refine) a search, even without slots.
+_SEARCH_INTENTS = frozenset({"find_slots", "find_nearest_slots", "find_doctors", "find_clinics"})
 _YES_NO_STAGES = frozenset(
     {Stage.CONFIRM, Stage.NO_SLOTS, Stage.OFFER_DOCTOR, Stage.OFFER_BOOK, Stage.PREVIEW}
 )
@@ -161,8 +163,10 @@ class DialogueManager:
         intent = parse.intent if parse.confident else INFORMATIVE_INTENT
         slots = self._with_fallbacks(state, text, parse.slots, intent)
 
-        if state.stage is Stage.NO_SLOTS and wants_another_date(text):
+        if wants_another_date(text) and state.stage in (Stage.NO_SLOTS, Stage.SELECT_SLOT):
+            # «давайте другую дату» works while choosing too, not just on no-slots.
             state.nearest = False
+            state.options = []
             state.wants.pop("date", None)
             state.stage = Stage.ASK_DATE
             return t.ASK_DATE
@@ -185,6 +189,13 @@ class DialogueManager:
             if answer is not None:
                 return await self._on_yes_no(state, answer)
 
+        if state.stage is Stage.SELECT_SLOT and self._has_search_update(intent, slots):
+            # A fresh search («а в Казани?», «12.10», «после двух») replaces the
+            # offered list instead of being misread as a slot choice.
+            flow = _FLOW_BY_INTENT.get(intent)
+            if flow is not None:
+                self._enter_flow(state, flow, nearest=intent == "find_nearest_slots")
+            return await self._merge_and_advance(state, slots)
         if state.stage is Stage.SELECT_SLOT and self._is_selection(intent, slots):
             option = self._pick_slot(state, slots)
             if option is None:
@@ -251,6 +262,15 @@ class DialogueManager:
         if state.stage is Stage.IDLE:
             return t.NOT_UNDERSTOOD
         return t.repeat(state.last_response)
+
+    @staticmethod
+    def _has_search_update(intent: str, slots: dict[str, str]) -> bool:
+        """True if the turn refines the search (not a slot choice)."""
+        if intent in _SEARCH_INTENTS:
+            return True
+        return any(
+            key in slots for key in ("specialty", "date", "time", "time_after", "doctor", "city")
+        )
 
     @staticmethod
     def _is_selection(intent: str, slots: dict[str, str]) -> bool:
@@ -350,8 +370,21 @@ class DialogueManager:
 
     def _enter_flow(self, state: DialogueState, flow: Flow, *, nearest: bool = False) -> None:
         if state.flow is not flow:
+            # Search-like flows share one context (specialty/doctor/date/city):
+            # switching between them refines the search instead of starting over.
+            # «ближайшее окно» after «кардиолог» must keep the specialty.
+            keep = state.flow in (Flow.BOOK, Flow.SLOTS, Flow.DOCTORS) and flow in (
+                Flow.BOOK,
+                Flow.SLOTS,
+                Flow.DOCTORS,
+            )
+            stashed_wants = dict(state.wants) if keep else None
+            stashed_doctor = state.doctor if keep else None
             state.reset_flow()
             state.flow = flow
+            if stashed_wants is not None:
+                state.wants = stashed_wants
+                state.doctor = stashed_doctor
         state.nearest = state.nearest or nearest
         state.pending = None
 
@@ -470,7 +503,7 @@ class DialogueManager:
         state.stage = Stage.OFFER_DOCTOR
         if len(doctors) == 1:
             state.doctor = doctors[0]
-            return t.DOCTORS_FOUND.format(doc=doctors[0].name)
+            return t.doctors_found(doctors[0].name)
         names = ", ".join(d.name for d in doctors)
         return f"Нашла врачей: {names}. Хотите записаться?"
 
@@ -545,8 +578,12 @@ class DialogueManager:
             return failure
         options = self._filter(state, self._options(result, clinic))
         if not options:
-            state.stage = Stage.NO_SLOTS
-            return t.NO_SLOTS
+            # No extra turn: offer the nearest windows right away. The user can
+            # still pick another date while choosing (wants_another_date).
+            state.nearest = True
+            return await self._offer_nearest(
+                state, clinic, target, day + timedelta(days=1), prefix=t.NO_SLOTS_AUTO
+            )
         reply = self._offer(state, options)
         wanted = state.wants.get("time")
         if wanted and len(options) == 1 and options[0].hm == wanted:
@@ -555,7 +592,12 @@ class DialogueManager:
         return reply
 
     async def _offer_nearest(
-        self, state: DialogueState, clinic: ClinicRef, target: dict[str, Any], start: date
+        self,
+        state: DialogueState,
+        clinic: ClinicRef,
+        target: dict[str, Any],
+        start: date,
+        prefix: str = "",
     ) -> str:
         for _ in range(NEAREST_RESCANS):
             result = await self._execute(
@@ -575,7 +617,7 @@ class DialogueManager:
                 break
             options = self._filter(state, raw_options)
             if options:
-                return self._offer(state, options)
+                return self._offer(state, options, prefix)
             # The earliest day has nothing matching the time wish: look further.
             start = raw_options[-1].day + timedelta(days=1)
         state.nearest = False
@@ -623,11 +665,11 @@ class DialogueManager:
             options = [o for o in options if o.hm >= after]
         return options
 
-    def _offer(self, state: DialogueState, options: list[SlotOption]) -> str:
+    def _offer(self, state: DialogueState, options: list[SlotOption], prefix: str = "") -> str:
         state.all_options = options
         state.options = options[:MAX_OPTIONS]
         state.stage = Stage.SELECT_SLOT
-        return t.slots_reply([(o.day, o.hm) for o in state.options])
+        return prefix + t.slots_reply([(o.day, o.hm) for o in state.options])
 
     # -- choosing a slot / a record ---------------------------------------
 
