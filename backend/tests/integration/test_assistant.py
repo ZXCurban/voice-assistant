@@ -94,7 +94,7 @@ async def test_find_slots_ambiguous_doctor(db_session: AsyncSession) -> None:
         db_session,
         DoctorCreate(
             clinic_id=refs["clinic_id"],
-            full_name="Jan Kowalski",
+            full_name="Андрей Волков",
             specialty_id=second_spec.id,
         ),
     )
@@ -103,7 +103,7 @@ async def test_find_slots_ambiguous_doctor(db_session: AsyncSession) -> None:
         AssistantRequest(
             intent="find_slots",
             clinic_id=refs["clinic_id"],
-            doctor_name="jan kowalski",
+            doctor_name="андрей волков",
             date=future_monday(),
         ),
     )
@@ -169,7 +169,7 @@ async def test_book_confirmation_then_execute(db_session: AsyncSession) -> None:
         AssistantRequest(**base, confirmed=True),  # type: ignore[arg-type]
     )
     assert (booked.status, booked.code) == ("success", "APPOINTMENT_BOOKED")
-    assert booked.details["appointment"]["doctor"]["full_name"] == "Jan Kowalski"
+    assert booked.details["appointment"]["doctor"]["full_name"] == "Андрей Волков"
 
     double = await orchestrator.handle(
         db_session,
@@ -461,7 +461,7 @@ async def test_find_helpers_and_create_patient(db_session: AsyncSession) -> None
             intent="create_patient",
             clinic_id=refs["clinic_id"],
             full_name="Voice Patient",
-            phone="+48000000001",
+            phone="+70000000001",
         ),
     )
     assert (created.status, created.code) == ("success", "PATIENT_CREATED")

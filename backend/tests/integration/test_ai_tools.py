@@ -76,7 +76,7 @@ async def test_execute_find_slots_on_seeded_clinic(db_session: AsyncSession) -> 
     assert result["status"] == "success"
     assert len(result["details"]["slots"]) > 0
     slot = result["details"]["slots"][0]
-    assert slot["doctor"]["full_name"] == "Jan Kowalski"
+    assert slot["doctor"]["full_name"] == "Андрей Волков"
     assert slot["room"]["code"] == "A-101"
 
 
@@ -189,31 +189,31 @@ async def test_execute_find_clinics_ranked_by_city(db_session: AsyncSession) -> 
     await clinics_service.create_clinic(
         db_session,
         ClinicCreate(
-            name="Geo Warsaw",
-            timezone="Europe/Warsaw",
-            city="Warszawa",
-            address="Marszalkowska 1, Warszawa",
-            latitude=52.2297,
-            longitude=21.0122,
+            name="Гео Москва",
+            timezone="Europe/Moscow",
+            city="Москва",
+            address="Тверской бульвар, 12, Москва",
+            latitude=55.7558,
+            longitude=37.6173,
         ),
     )
     await clinics_service.create_clinic(
         db_session,
         ClinicCreate(
-            name="Geo Lisbon",
-            timezone="Europe/Lisbon",
-            city="Lisboa",
-            address="Av. Atlantica 10, Lisboa",
-            latitude=38.7223,
-            longitude=-9.1393,
+            name="Гео Казань",
+            timezone="Europe/Moscow",
+            city="Казань",
+            address="ул. Баумана, 20, Казань",
+            latitude=55.7887,
+            longitude=49.1221,
         ),
     )
     orch = AssistantOrchestrator()
-    ranked = await orch.handle(db_session, AssistantRequest(intent="find_clinics", city="Варшава"))
+    ranked = await orch.handle(db_session, AssistantRequest(intent="find_clinics", city="Москва"))
     assert ranked.status == "success"
     names = [c["name"] for c in ranked.details["clinics"]]
-    assert names.index("Geo Warsaw") < names.index("Geo Lisbon")
-    assert ranked.details["matched_city"] == "warszawa"
+    assert names.index("Гео Москва") < names.index("Гео Казань")
+    assert ranked.details["matched_city"] == "moskva"
 
     plain = await orch.handle(db_session, AssistantRequest(intent="find_clinics"))
     assert plain.status == "success"

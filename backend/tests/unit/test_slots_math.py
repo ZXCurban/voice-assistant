@@ -40,9 +40,9 @@ def test_expand_slots_drops_short_tail() -> None:
     ]
 
 
-def test_compute_day_slots_warsaw_winter() -> None:
-    """09:00 local in January = 08:00 UTC (CET, UTC+1)."""
-    tz = ZoneInfo("Europe/Warsaw")
+def test_compute_day_slots_moscow_winter() -> None:
+    """09:00 local in January = 06:00 UTC (MSK, UTC+3, no DST)."""
+    tz = ZoneInfo("Europe/Moscow")
     target = date(2026, 1, 12)  # a Monday
     pairs = compute_day_slots(
         clinic_tz=tz,
@@ -54,15 +54,15 @@ def test_compute_day_slots_warsaw_winter() -> None:
         now_utc=datetime(2026, 1, 1, tzinfo=UTC),
     )
     assert [s for s, _ in pairs] == [
-        datetime(2026, 1, 12, 8, 0, tzinfo=UTC),
-        datetime(2026, 1, 12, 8, 30, tzinfo=UTC),
+        datetime(2026, 1, 12, 6, 0, tzinfo=UTC),
+        datetime(2026, 1, 12, 6, 30, tzinfo=UTC),
     ]
-    assert pairs[0][1] == datetime(2026, 1, 12, 8, 30, tzinfo=UTC)
+    assert pairs[0][1] == datetime(2026, 1, 12, 6, 30, tzinfo=UTC)
 
 
 def test_compute_day_slots_summer_offset() -> None:
-    """09:00 local in July = 07:00 UTC (CEST, UTC+2) — DST handled."""
-    tz = ZoneInfo("Europe/Warsaw")
+    """09:00 local in July = 06:00 UTC (MSK, UTC+3, no DST)."""
+    tz = ZoneInfo("Europe/Moscow")
     target = date(2026, 7, 13)
     pairs = compute_day_slots(
         clinic_tz=tz,
@@ -73,11 +73,11 @@ def test_compute_day_slots_summer_offset() -> None:
         booked_starts_utc=set(),
         now_utc=datetime(2026, 7, 1, tzinfo=UTC),
     )
-    assert pairs[0][0] == datetime(2026, 7, 13, 7, 0, tzinfo=UTC)
+    assert pairs[0][0] == datetime(2026, 7, 13, 6, 0, tzinfo=UTC)
 
 
 def test_compute_day_slots_skips_booked_and_past() -> None:
-    tz = ZoneInfo("Europe/Warsaw")
+    tz = ZoneInfo("Europe/Moscow")
     target = date(2026, 1, 12)
     booked = {datetime(2026, 1, 12, 8, 30, tzinfo=UTC)}
     pairs = compute_day_slots(
@@ -100,17 +100,17 @@ def test_filter_slots_uses_clinic_local_time() -> None:
         SlotOut(
             doctor=doctor,
             specialty=specialty,
-            starts_at=datetime(2026, 1, 12, 13, 0, tzinfo=UTC),
-            ends_at=datetime(2026, 1, 12, 13, 30, tzinfo=UTC),
+            starts_at=datetime(2026, 1, 12, 11, 0, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 12, 11, 30, tzinfo=UTC),
         ),
         SlotOut(
             doctor=doctor,
             specialty=specialty,
-            starts_at=datetime(2026, 1, 12, 14, 0, tzinfo=UTC),
-            ends_at=datetime(2026, 1, 12, 14, 30, tzinfo=UTC),
+            starts_at=datetime(2026, 1, 12, 12, 0, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 12, 12, 30, tzinfo=UTC),
         ),
     ]
     filtered = filter_slots_after_local_time(
-        slots, time_after=time(14, 0), clinic_timezone="Europe/Warsaw"
+        slots, time_after=time(14, 0), clinic_timezone="Europe/Moscow"
     )
-    assert [slot.starts_at for slot in filtered] == [datetime(2026, 1, 12, 14, 0, tzinfo=UTC)]
+    assert [slot.starts_at for slot in filtered] == [datetime(2026, 1, 12, 12, 0, tzinfo=UTC)]

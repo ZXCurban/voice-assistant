@@ -107,7 +107,7 @@ facts, and every mutation goes through the orchestrator's confirm step
 exact phrases the models were trained on, so the previous reply is a valid
 NLU context. Typos and model slips are covered by deterministic fallbacks
 (phone/name verification against the typed text, fuzzy specialty and
-«завтра», doctor surnames in any Russian case, `+48`/`+351` normalisation).
+«завтра», doctor surnames in any Russian case, `+7` normalisation (trunk `8…`, bare mobiles).
 
 The trained weights are in the repository: `models/nlu/` has the
 `ml-training` layout (`intent/pytorch`, `slots/pytorch`, `intent/calibration.json`)
@@ -202,7 +202,7 @@ alembic -c backend/alembic.ini upgrade head
 ```
 
 Never put demo data in migrations — `app/db/seed_demo.py` only
-(idempotent, two clinics: Warsaw + Lisbon).
+(idempotent, four Russian clinics: Moscow, Saint Petersburg, Kazan, Novosibirsk).
 
 ## Security and deployment boundary
 

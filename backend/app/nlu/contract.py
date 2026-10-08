@@ -62,7 +62,7 @@ SPECIALTIES: Final[frozenset[str]] = frozenset(
         "therapist",
     }
 )
-CITIES: Final[frozenset[str]] = frozenset({"warszawa", "lisboa"})
+CITIES: Final[frozenset[str]] = frozenset({"moskva", "sankt-peterburg", "kazan", "novosibirsk"})
 PATIENT_MODES: Final[frozenset[str]] = frozenset({"new", "registered"})
 SELECTIONS: Final[frozenset[str]] = frozenset({"earliest", "latest", "1", "2", "3", "4", "5", "6"})
 

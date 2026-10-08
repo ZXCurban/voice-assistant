@@ -32,8 +32,8 @@ class _BookingBackend(AssistantOrchestrator):
                 message="clinics",
                 details={
                     "clinics": [
-                        {"id": 3, "city": "Warszawa"},
-                        {"id": 4, "city": "Lisboa"},
+                        {"id": 3, "city": "Москва"},
+                        {"id": 4, "city": "Казань"},
                     ]
                 },
             )

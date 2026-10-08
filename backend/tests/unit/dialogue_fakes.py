@@ -55,33 +55,33 @@ def _result(
 
 
 class FakeBackend:
-    """Two clinics (Warszawa, Lisboa) with a few doctors and daily slots."""
+    """Two clinics (Moscow, Kazan) with a few doctors and daily slots."""
 
     def __init__(self) -> None:
         self.today = date(2026, 10, 8)  # Thursday
         self.clinics = [
             {
                 "id": 1,
-                "name": "Przychodnia Srodmiescie",
-                "city": "Warszawa",
-                "address": "Marszalkowska 1, Warszawa",
-                "timezone": "Europe/Warsaw",
+                "name": "Клиника Северная звезда",
+                "city": "Москва",
+                "address": "Тверской бульвар, 12, Москва",
+                "timezone": "Europe/Moscow",
             },
             {
                 "id": 2,
-                "name": "Clinica Lisboa",
-                "city": "Lisboa",
-                "address": "Avenida da Liberdade 10, Lisboa",
-                "timezone": "Europe/Lisbon",
+                "name": "Волга Плюс",
+                "city": "Казань",
+                "address": "ул. Баумана, 20, Казань",
+                "timezone": "Europe/Moscow",
             },
         ]
         # clinic_id -> [(doctor_id, full_name, specialty)]
         self.doctors = {
-            1: [(11, "Jan Kowalski", "cardiology"), (12, "Anna Nowak", "dermatology")],
-            2: [(21, "Jan Kowalski", "pediatrics"), (22, "Maria Silva", "neurology")],
+            1: [(11, "Андрей Волков", "cardiology"), (12, "Ольга Морозова", "dermatology")],
+            2: [(21, "Анна Смирнова", "pediatrics"), (22, "Елена Кузнецова", "neurology")],
         }
         self.patients: list[dict[str, Any]] = [
-            {"id": 1, "clinic_id": 1, "full_name": "Ivan Petrov", "phone": "+48501234567"}
+            {"id": 1, "clinic_id": 1, "full_name": "Иван Петров", "phone": "+79210000001"}
         ]
         self.appointments: list[dict[str, Any]] = []
         self.busy: set[tuple[int, str]] = set()

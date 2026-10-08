@@ -39,7 +39,7 @@ async def main() -> None:
         clinics = await orchestrator.handle(session, AssistantRequest(intent="find_clinics"))
         _show("find_clinics", clinics)
         clinic = next(
-            c for c in clinics.details["clinics"] if c["name"] == "Przychodnia Srodmiescie"
+            c for c in clinics.details["clinics"] if c["name"] == "Клиника Северная звезда"
         )
         clinic_id: int = clinic["id"]
 
@@ -52,14 +52,14 @@ async def main() -> None:
                 AssistantRequest(
                     intent="find_slots",
                     clinic_id=clinic_id,
-                    specialty_name="Dermatology",
+                    specialty_name="Cardiology",
                     date=day,
                 ),
             )
             if found.status == "success" and found.details["slots"]:
                 target, slots = day, found.details["slots"]
                 break
-        assert target is not None and slots, "seed has no dermatology slots?"
+        assert target is not None and slots, "seed has no cardiology slots?"
         first_slot = slots[0]
         first_instant = str(first_slot["starts_at"])
         assert isinstance(first_slot["doctor"], dict)
@@ -69,7 +69,7 @@ async def main() -> None:
         existing = (
             await session.execute(
                 select(Patient).where(
-                    Patient.clinic_id == clinic_id, Patient.phone == "+48000000009"
+                    Patient.clinic_id == clinic_id, Patient.phone == "+70000000009"
                 )
             )
         ).scalar_one_or_none()
@@ -79,7 +79,7 @@ async def main() -> None:
                 PatientCreate(
                     clinic_id=clinic_id,
                     full_name="Assistant Demo",
-                    phone="+48000000009",
+                    phone="+70000000009",
                 ),
             )
             patient_id = patient.id

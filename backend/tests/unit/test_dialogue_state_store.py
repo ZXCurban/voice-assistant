@@ -49,12 +49,12 @@ async def test_state_persists_but_is_isolated_by_subject_and_clinic() -> None:
     async with store.conversation("same-id", subject="patient-1", clinic_id=7) as state:
         state.intent = "book_appointment"
         state.phase = "WAITING_CLARIFICATION"
-        state.clinic_city = "Warszawa"
+        state.clinic_city = "Москва"
 
     async with store.conversation("same-id", subject="patient-1", clinic_id=7) as resumed:
         assert resumed.intent == "book_appointment"
         assert resumed.phase == "WAITING_CLARIFICATION"
-        assert resumed.clinic_city == "Warszawa"
+        assert resumed.clinic_city == "Москва"
 
     async with store.conversation("same-id", subject="patient-2", clinic_id=7) as other_user:
         assert other_user.intent is None

@@ -48,7 +48,10 @@ DOCTORS_FOUND = "Нашла врача {doc}. Хотите записаться 
 
 # Phrases that were not part of the training flows. They are only ever
 # produced where a free-form reply is expected or the dialogue ends.
-CITY_NOT_SERVED = "В этом городе клиник нет. Назовите другой город: Варшава или Лиссабон."
+CITY_NOT_SERVED = (
+    "В этом городе клиник нет. Назовите другой город: "
+    "Москва, Санкт-Петербург, Казань или Новосибирск."
+)
 SLOT_TAKEN = "Это время уже занято, выберите другое. "
 PAST_DATE = "Эта дата уже прошла. " + ASK_DATE
 NO_RECORDS = "Активных записей не нашла. Хотите записаться на приём?"
@@ -80,7 +83,7 @@ def ask_city_spec(specialty: str | None) -> str:
     if specialty in _GENITIVE:
         return (
             f"Да, ищу {_GENITIVE[specialty]}. "
-            "В каком городе или филиале? Например, Варшава или Лиссабон."
+            "В каком городе или филиале? Например, Москва или Казань."
         )
     return ASK_CITY
 

@@ -63,9 +63,7 @@ async def test_unconfident_turn_goes_to_the_rule_based_pipeline(engine: Scripted
 
 
 async def test_tenant_locked_identity_never_uses_the_nlu(engine: ScriptedEngine) -> None:
-    locked = AssistantIdentity(
-        subject="p1", clinic_id=1, clinic_city="Warszawa", tenant_locked=True
-    )
+    locked = AssistantIdentity(subject="p1", clinic_id=1, clinic_city="Москва", tenant_locked=True)
     reply = await chat_service.chat(
         "хочу записаться к кардиологу", "c", session=SESSION, identity=locked
     )

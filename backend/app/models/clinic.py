@@ -32,7 +32,7 @@ class Clinic(Base):
     latitude: Mapped[float | None] = mapped_column(nullable=True)
     longitude: Mapped[float | None] = mapped_column(nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    # IANA timezone name, e.g. "Europe/Warsaw". Mandatory: schedules are
+    # IANA timezone name, e.g. "Europe/Moscow". Mandatory: schedules are
     # interpreted in clinic-local time, appointments stored as UTC.
     timezone: Mapped[str] = mapped_column(Text, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

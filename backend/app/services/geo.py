@@ -24,28 +24,50 @@ class _GeoClinic(Protocol):
 
 # Canonical city -> known spellings (lowercase, ё already folded to е).
 _CITY_ALIASES: dict[str, frozenset[str]] = {
-    "warszawa": frozenset(
+    "moskva": frozenset(
         {
-            "варшава",
-            "варшавы",
-            "варшаве",
-            "варшаву",
-            "варшавой",
-            "warszawa",
-            "warsaw",
-            "warschau",
+            "москва",
+            "москвы",
+            "москве",
+            "москву",
+            "москвой",
+            "москвою",
+            "moskva",
+            "moscow",
         }
     ),
-    "lisboa": frozenset(
+    "sankt-peterburg": frozenset(
         {
-            "лиссабон",
-            "лиссабона",
-            "лиссабоне",
-            "лисабон",
-            "lisboa",
-            "lisbon",
-            "lisbona",
-            "lissabon",
+            "санкт-петербург",
+            "санкт-петербурга",
+            "санкт-петербурге",
+            "петербург",
+            "петербурга",
+            "петербурге",
+            "питер",
+            "питере",
+            "питеру",
+            "спб",
+            "sankt-peterburg",
+            "saint petersburg",
+            "petersburg",
+        }
+    ),
+    "kazan": frozenset(
+        {
+            "казань",
+            "казани",
+            "казанью",
+            "kazan",
+        }
+    ),
+    "novosibirsk": frozenset(
+        {
+            "новосибирск",
+            "новосибирска",
+            "новосибирске",
+            "новосиб",
+            "novosibirsk",
         }
     ),
 }
@@ -60,11 +82,19 @@ def normalize(text: str) -> str:
 
 def canonical_city(query: str) -> str | None:
     """Map a free-form address query to a known canonical city, if any."""
-    q = normalize(query)
-    for canonical, aliases in _CITY_ALIASES.items():
-        if canonical in q or any(alias in q for alias in aliases):
+    for canonical in _CITY_ALIASES:
+        if city_mentioned(canonical, query):
             return canonical
     return None
+
+
+def city_mentioned(canonical: str, text: str) -> bool:
+    """True if the text names this exact canonical city (any known spelling)."""
+    aliases = _CITY_ALIASES.get(canonical)
+    if aliases is None:
+        return False
+    q = normalize(text)
+    return canonical in q or any(alias in q for alias in aliases)
 
 
 def _tokens(text: str) -> set[str]:

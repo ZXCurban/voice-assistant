@@ -15,10 +15,10 @@ from tests.integration.helpers import future_monday, make_clinic
 
 async def test_cross_clinic_access_returns_404(db_session: AsyncSession) -> None:
     clinic_a = await make_clinic(
-        db_session, name="Isolation A", doctor_name="Jan Kowalski", room_code="A-101"
+        db_session, name="Isolation A", doctor_name="Андрей Волков", room_code="101"
     )
     clinic_b = await make_clinic(
-        db_session, name="Isolation B", doctor_name="Jan Kowalski", room_code="A-101"
+        db_session, name="Isolation B", doctor_name="Андрей Волков", room_code="101"
     )
     assert clinic_a["doctor_id"] != clinic_b["doctor_id"]
 

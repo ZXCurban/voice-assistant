@@ -27,12 +27,12 @@ PATIENT_PHONE = "+10000000001"  # created by make_clinic
 SCRIPT: Script = {
     "запишите к кардиологу": ("book_appointment", {"specialty": "cardiology"}),
     "в понедельник": ("unknown_request", {"date": "weekday:0"}),
-    "Варшава": ("unknown_request", {"city": "warszawa"}),
+    "Москва": ("unknown_request", {"city": "moskva"}),
     "самый ранний": ("select_option", {"selection": "earliest"}),
     "я уже был": ("unknown_request", {"patient_mode": "registered"}),
     "впервые": ("unknown_request", {"patient_mode": "new"}),
-    "Анна Новак": ("unknown_request", {"full_name": "Анна Новак"}),
-    "+48 600 100 200": ("unknown_request", {"phone": "+48600100200"}),
+    "Анна Смирнова": ("unknown_request", {"full_name": "Анна Смирнова"}),
+    "+7 921 600 10 02": ("unknown_request", {"phone": "+79216001002"}),
     "+1 000 000 0001": ("unknown_request", {"phone": PATIENT_PHONE}),
     "да": ("confirm", {}),
     "нет": ("reject", {}),
@@ -58,20 +58,20 @@ class Session:
         return reply
 
 
-async def _warsaw_clinic(db_session: AsyncSession) -> dict[str, int]:
-    return dict(await make_clinic(db_session, name="NLU Warszawa", city="Warszawa"))
+async def _moscow_clinic(db_session: AsyncSession) -> dict[str, int]:
+    return dict(await make_clinic(db_session, name="NLU Москва", city="Москва"))
 
 
 async def _to_slot_list(session: Session) -> str:
     assert await session.say("запишите к кардиологу") == t.ASK_DATE
     assert await session.say("в понедельник") == t.ask_city_spec("cardiology")
-    return await session.say("Варшава")
+    return await session.say("Москва")
 
 
 async def test_registered_patient_books_through_the_real_orchestrator(
     db_session: AsyncSession,
 ) -> None:
-    refs = await _warsaw_clinic(db_session)
+    refs = await _moscow_clinic(db_session)
     session = Session(db_session)
     listing = await _to_slot_list(session)
     assert listing.startswith("Доступное время: 1 — ")
@@ -79,7 +79,7 @@ async def test_registered_patient_books_through_the_real_orchestrator(
     assert await session.say("самый ранний") == t.ASK_PATIENT
     assert await session.say("я уже был") == t.ASK_PHONE
     question = await session.say("+1 000 000 0001")
-    assert question.startswith("Записать вас на ") and "Jan Kowalski" in question
+    assert question.startswith("Записать вас на ") and "Андрей Волков" in question
 
     # The preview must not have booked anything yet.
     before = await execute_tool(
@@ -99,30 +99,30 @@ async def test_registered_patient_books_through_the_real_orchestrator(
 
 
 async def test_new_patient_is_created_only_after_the_yes(db_session: AsyncSession) -> None:
-    refs = await _warsaw_clinic(db_session)
+    refs = await _moscow_clinic(db_session)
     session = Session(db_session)
     await _to_slot_list(session)
     await session.say("самый ранний")
     assert await session.say("впервые") == t.ASK_NAME
-    assert await session.say("Анна Новак") == t.ASK_PHONE
-    question = await session.say("+48 600 100 200")
-    assert question.startswith("Создать профиль «Анна Новак»")
+    assert await session.say("Анна Смирнова") == t.ASK_PHONE
+    question = await session.say("+7 921 600 10 02")
+    assert question.startswith("Создать профиль «Анна Смирнова»")
 
     unknown = await execute_tool(
-        db_session, "find_patient", {"clinic_id": refs["clinic_id"], "phone": "+48600100200"}
+        db_session, "find_patient", {"clinic_id": refs["clinic_id"], "phone": "+79216001002"}
     )
     assert unknown["status"] == "not_found"
 
     assert (await session.say("да")).startswith("Готово, запись оформлена.")
     created = await execute_tool(
-        db_session, "find_patient", {"clinic_id": refs["clinic_id"], "phone": "+48600100200"}
+        db_session, "find_patient", {"clinic_id": refs["clinic_id"], "phone": "+79216001002"}
     )
     assert created["status"] == "success"
-    assert created["details"]["patient"]["full_name"] == "Анна Новак"
+    assert created["details"]["patient"]["full_name"] == "Анна Смирнова"
 
 
 async def test_declined_confirmation_books_nothing(db_session: AsyncSession) -> None:
-    refs = await _warsaw_clinic(db_session)
+    refs = await _moscow_clinic(db_session)
     session = Session(db_session)
     await _to_slot_list(session)
     await session.say("самый ранний")
@@ -138,7 +138,7 @@ async def test_declined_confirmation_books_nothing(db_session: AsyncSession) -> 
 
 
 async def test_cancel_a_booked_appointment(db_session: AsyncSession) -> None:
-    refs = await _warsaw_clinic(db_session)
+    refs = await _moscow_clinic(db_session)
     session = Session(db_session)
     await _to_slot_list(session)
     await session.say("самый ранний")
@@ -148,7 +148,7 @@ async def test_cancel_a_booked_appointment(db_session: AsyncSession) -> None:
 
     other = Session(db_session)
     assert await other.say("отмените запись") == t.ASK_CITY
-    assert await other.say("Варшава") == t.ASK_PHONE
+    assert await other.say("Москва") == t.ASK_PHONE
     question = await other.say("+1 000 000 0001")
     assert question.startswith("Отменить запись на ")
     assert await other.say("да") == t.CANCELLED
@@ -165,13 +165,13 @@ async def test_cancel_a_booked_appointment(db_session: AsyncSession) -> None:
 
 
 async def test_city_without_a_clinic_is_reported(db_session: AsyncSession) -> None:
-    await _warsaw_clinic(db_session)
-    script: Script = {**SCRIPT, "Лиссабон": ("unknown_request", {"city": "lisboa"})}
+    await _moscow_clinic(db_session)
+    script: Script = {**SCRIPT, "Казань": ("unknown_request", {"city": "kazan"})}
     session = Session(db_session)
     session.manager = DialogueManager(ScriptedEngine(script), session._execute)
     await session.say("запишите к кардиологу")
     await session.say("в понедельник")
-    assert await session.say("Лиссабон") == t.CITY_NOT_SERVED
+    assert await session.say("Казань") == t.CITY_NOT_SERVED
 
 
 @pytest.fixture
@@ -215,18 +215,18 @@ async def test_phone_lookup_ignores_spaces_and_dashes(db_session: AsyncSession) 
     from app.schemas.patient import PatientCreate
     from app.services import patients as patients_service
 
-    refs = await _warsaw_clinic(db_session)
+    refs = await _moscow_clinic(db_session)
     await patients_service.create_patient(
         db_session,
         PatientCreate(
-            clinic_id=refs["clinic_id"], full_name="Demo Pacjent", phone="+48 700 000 001"
+            clinic_id=refs["clinic_id"], full_name="Демо Пациент", phone="+7 900 000 00 01"
         ),
     )
-    for spelling in ("+48700000001", "+48 700-000-001", "+48 (700) 000 001"):
+    for spelling in ("+79000000001", "+7 900-000-00-01", "+7 (900) 000 00 01"):
         found = await patients_service.get_patient_by_phone(db_session, refs["clinic_id"], spelling)
-        assert found.full_name == "Demo Pacjent"
+        assert found.full_name == "Демо Пациент"
     # …and a different number still does not match.
     result = await execute_tool(
-        db_session, "find_patient", {"clinic_id": refs["clinic_id"], "phone": "+48700000002"}
+        db_session, "find_patient", {"clinic_id": refs["clinic_id"], "phone": "+79000000002"}
     )
     assert result["status"] == "not_found"

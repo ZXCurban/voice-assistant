@@ -43,21 +43,21 @@ def main() -> None:
     status, clinics = call("GET", "/api/v1/clinics")
     check("list clinics", status == 200 and len(clinics) >= 2, clinics)
     assert isinstance(clinics, list)
-    clinic_a = next(c for c in clinics if c["name"] == "Przychodnia Srodmiescie")
-    clinic_b = next(c for c in clinics if c["name"] == "Clinica Atlantica")
+    clinic_a = next(c for c in clinics if c["name"] == "Клиника Северная звезда")
+    clinic_b = next(c for c in clinics if c["name"] == "Волга Плюс")
     cid = clinic_a["id"]
     print(f"Clinic A id={cid} tz={clinic_a['timezone']}")
 
     _, specs = call("GET", f"/api/v1/clinics/{cid}/specialties")
     assert isinstance(specs, list)
-    derm = next(s for s in specs if s["name"] == "dermatology")
+    cardio = next(s for s in specs if s["name"] == "cardiology")
     _, doctors = call(
-        "GET", f"/api/v1/clinics/{cid}/doctors?specialty_id={derm['id']}"
+        "GET", f"/api/v1/clinics/{cid}/doctors?specialty_id={cardio['id']}"
     )
     assert isinstance(doctors, list)
     doctor = doctors[0]
     print(f"Doctor: {doctor['full_name']} ({doctor['specialty']['name']})")
-    check("doctor nesting", doctor["specialty"]["name"] == "dermatology", doctor)
+    check("doctor nesting", doctor["specialty"]["name"] == "cardiology", doctor)
 
     target_date = None
     slots = []
@@ -65,7 +65,7 @@ def main() -> None:
         day = date.today() + timedelta(days=ahead)
         status, found = call(
             "GET",
-            f"/api/v1/slots?clinic_id={cid}&date={day}&specialty_id={derm['id']}",
+            f"/api/v1/slots?clinic_id={cid}&date={day}&specialty_id={cardio['id']}",
         )
         assert isinstance(found, list)
         if status == 200 and len(found) >= 2:
@@ -77,7 +77,7 @@ def main() -> None:
     status, patient = call(
         "POST",
         "/api/v1/patients",
-        {"clinic_id": cid, "full_name": "Demo Voice", "phone": "+48000000001"},
+        {"clinic_id": cid, "full_name": "Demo Voice", "phone": "+70000000001"},
     )
     check("patient created", status == 201, (status, patient))
     assert isinstance(patient, dict)
@@ -127,9 +127,9 @@ def main() -> None:
     codes_b = {r["code"] for r in rooms_b}
     _, rooms_a = call("GET", f"/api/v1/clinics/{cid}/rooms")
     assert isinstance(rooms_a, list)
-    check("room A-101 exists in both, different ids", "A-101" in codes_b, rooms_b)
-    id_a = next(r["id"] for r in rooms_a if r["code"] == "A-101")
-    id_b = next(r["id"] for r in rooms_b if r["code"] == "A-101")
+    check("room 101 exists in both, different ids", "101" in codes_b, rooms_b)
+    id_a = next(r["id"] for r in rooms_a if r["code"] == "101")
+    id_b = next(r["id"] for r in rooms_b if r["code"] == "101")
     check("room ids differ per clinic", id_a != id_b, (id_a, id_b))
 
     status, _ = call("GET", f"/api/v1/doctors/{doctor['id']}?clinic_id={clinic_b['id']}")

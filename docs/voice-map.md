@@ -53,7 +53,7 @@ in the **clinic's** timezone.
   1. list_clinics → patient picks clinic (ask if >1)
   2. list_specialties(clinic) → match "dermatology" (case-insensitive)
   3. find_available_slots(clinic, specialty, tomorrow)
-     → "Есть Анна Новак в 10:00, 10:15 и 10:30."
+     → "Есть Анна Смирнова в 10:00, 10:15 и 10:30."
   4. "Давай на 10:15." → create_patient (first visit) then
      create_appointment(starts_at=<exact string from step 3>)
 ```
@@ -62,7 +62,7 @@ in the **clinic's** timezone.
 
 - *"What doctors are available for dermatology tomorrow?"* —
   `list_specialties` → `find_available_slots(specialty_id, date)`.
-- *"Where does Dr. Kowalski see patients?"* —
+- *"Where does Dr. Volkov see patients?"* —
   `list_doctors` (disambiguate by specialty/department) → `get_doctor` +
   `get_doctor_slots` (each slot carries `room {code, label}`).
 - *"Which clinics have dermatologists tomorrow?"* — `list_clinics`,
@@ -70,8 +70,8 @@ in the **clinic's** timezone.
   (small N; no cross-clinic endpoint by design — tenant data is never
   mixed in one response).
 - *Same-name doctors* — `list_doctors` returns specialty/department
-  names inline; ask "Какого доктора Ковальского вы имеете в виду —
-  кардиолога или педиатра?" using those fields plus `doctor_id`.
+  names inline; ask "Какую Анну Смирнову вы имеете в виду —
+  кардиолога в Москве или в Казани?" using those fields plus `doctor_id`.
 
 ## Error cheat-sheet for the LLM
 

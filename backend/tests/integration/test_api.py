@@ -6,12 +6,12 @@ from fastapi.testclient import TestClient
 
 
 def _clinic_payload(name: str = "API Clinic") -> dict[str, str]:
-    return {"name": name, "timezone": "Europe/Warsaw", "address": "Test 1"}
+    return {"name": name, "timezone": "Europe/Moscow", "address": "Test 1"}
 
 
 def test_management_then_patient_flow(api_client: TestClient) -> None:
     clinic = api_client.post("/api/v1/management/clinics", json=_clinic_payload()).json()
-    assert clinic["timezone"] == "Europe/Warsaw"
+    assert clinic["timezone"] == "Europe/Moscow"
     cid = clinic["id"]
 
     # Duplicate clinic name → 409.
@@ -95,7 +95,7 @@ def test_management_then_patient_flow(api_client: TestClient) -> None:
 
     patient = api_client.post(
         "/api/v1/patients",
-        json={"clinic_id": cid, "full_name": "Jan Pacjent", "phone": "+48111111111"},
+        json={"clinic_id": cid, "full_name": "Иван Пациент", "phone": "+71111111111"},
     ).json()
 
     # Next Monday (≥7 days out so it is never in the past).
@@ -237,7 +237,7 @@ def test_voice_nesting_and_patch_endpoints(api_client: TestClient) -> None:
         "/api/v1/management/doctors",
         json={
             "clinic_id": cid,
-            "full_name": "Jan Kowalski",
+            "full_name": "Андрей Волков",
             "specialty_id": spec["id"],
             "department_id": dept["id"],
         },
@@ -282,7 +282,7 @@ def test_voice_nesting_and_patch_endpoints(api_client: TestClient) -> None:
 
     patient = api_client.post(
         "/api/v1/patients",
-        json={"clinic_id": cid, "full_name": "Voice Patient", "phone": "+48222222222"},
+        json={"clinic_id": cid, "full_name": "Voice Patient", "phone": "+72222222222"},
     ).json()
     today = date.today()
     delta = (0 - today.weekday()) % 7 or 7
@@ -318,7 +318,7 @@ def test_voice_nesting_and_patch_endpoints(api_client: TestClient) -> None:
     assert booking.status_code == 201, booking.text
     body = booking.json()
     # Nested voice context + whitespace-only reason normalized to null.
-    assert body["doctor"]["full_name"] == "Jan Kowalski"
+    assert body["doctor"]["full_name"] == "Андрей Волков"
     assert body["specialty"]["name"] == "cardiology"
     assert body["patient"]["full_name"] == "Voice Patient"
     assert body["reason"] is None

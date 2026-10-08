@@ -47,8 +47,8 @@ def test_low_confidence_and_unrecognized_slots_are_not_guessed() -> None:
 
 
 def test_nlu_keeps_phone_digits_for_format_independent_lookup() -> None:
-    parsed = parse_utterance("Мой номер +48 700 000 001")
-    assert parsed.slots["phone"].value == "+48700000001"
+    parsed = parse_utterance("Мой номер +7 900 000 00 01")
+    assert parsed.slots["phone"].value == "+79000000001"
 
 
 def test_nlu_extracts_name_after_explicit_self_identification() -> None:
@@ -97,8 +97,8 @@ def test_synonyms_and_date_time_normalization() -> None:
     assert normalize_date("10-07", date(2026, 10, 6)) == date(2026, 10, 7)
     assert normalize_date("31-02", date(2026, 1, 1)) is None
     assert normalize_date("weekday:3", date(2026, 10, 6)) == date(2026, 10, 8)
-    city = parse_utterance("Какие клиники есть в Варшаве?")
-    assert normalize(city, clinic_id=None)["city"] == "warszawa"
+    city = parse_utterance("Какие клиники есть в Москве?")
+    assert normalize(city, clinic_id=None)["city"] == "moskva"
 
 
 def test_response_engine_renders_backend_events_safely() -> None:

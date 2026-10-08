@@ -52,6 +52,7 @@ def test_linear_slots_are_parsed_and_cleaned() -> None:
     [
         ({"specialty": "gynecology"}, {}),  # outside the contract
         ({"city": "krakow"}, {}),
+        ({"city": "warszawa"}, {}),  # old training vocabulary is no longer valid
         ({"time": "25:00"}, {}),
         ({"date": "next month"}, {}),
         ({"date": "2026-13-40"}, {}),
@@ -59,7 +60,8 @@ def test_linear_slots_are_parsed_and_cleaned() -> None:
         ({"full_name": "иван"}, {}),  # needs two capitalized words
         ({"unknown_slot": "x"}, {}),
         ({"date": "weekday:4", "time": "09:30"}, {"date": "weekday:4", "time": "09:30"}),
-        ({"phone": "+48 501-234-567"}, {"phone": "+48501234567"}),
+        ({"phone": "+7 921-000-00-01"}, {"phone": "+79210000001"}),
+        ({"city": "moskva"}, {"city": "moskva"}),
         ({"full_name": "Иван Петров"}, {"full_name": "Иван Петров"}),
     ],
 )
@@ -89,11 +91,11 @@ def test_resolve_date(value: str, expected: date | None) -> None:
 
 
 def test_doctor_surnames_match_across_alphabets() -> None:
-    names = ["Jan Kowalski", "Anna Nowak", "Maria Silva"]
-    assert match_doctors("Ковальский", names) == [0]
-    assert match_doctors("Новак", names) == [1]
-    assert match_doctors("Сильва", names) == [2]
-    assert match_doctors("kowalski", names) == [0]
+    names = ["Андрей Волков", "Ольга Морозова", "Елена Кузнецова"]
+    assert match_doctors("Волков", names) == [0]
+    assert match_doctors("Морозова", names) == [1]
+    assert match_doctors("Кузнецова", names) == [2]
+    assert match_doctors("volkov", names) == [0]
     assert match_doctors("Иванов", names) == []
     assert match_doctors("", names) == []
     assert transliterate("Щука") == "schuka"
@@ -102,7 +104,7 @@ def test_doctor_surnames_match_across_alphabets() -> None:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("мой номер +48 501 234 567", "+48501234567"),
+        ("мой номер +7 921 000 00 01", "+79210000001"),
         ("8 (999) 123-45-67", "89991234567"),
         ("мне 25 лет", None),
         ("12345", None),
@@ -150,7 +152,7 @@ def test_detect_specialty(text: str, expected: str | None) -> None:
         ("я уже был у вас", "registered"),
         ("была в прошлом году", "registered"),
         ("не была", "new"),
-        ("Варшава", None),
+        ("Москва", None),
     ],
 )
 def test_detect_patient_mode(text: str, expected: str | None) -> None:
@@ -179,31 +181,34 @@ def test_detect_yes_no(text: str, expected: str | None) -> None:
 
 @pytest.mark.parametrize(
     "spoken",
-    ["Ковальскому", "Ковальского", "Ковальским", "Ковальский", "Kowalski"],
+    ["Волкову", "Волкова", "Волковым", "Волков", "volkov"],
 )
 def test_doctor_surname_matches_in_any_russian_case(spoken: str) -> None:
-    assert match_doctors(spoken, ["Jan Kowalski", "Anna Nowak", "Maria Silva"]) == [0]
+    assert match_doctors(spoken, ["Андрей Волков", "Ольга Морозова", "Елена Кузнецова"]) == [0]
 
 
-@pytest.mark.parametrize(("spoken", "index"), [("Новаку", 1), ("Сильве", 2), ("Ковальчик", 3)])
+@pytest.mark.parametrize(
+    ("spoken", "index"), [("Морозовой", 1), ("Кузнецовой", 2), ("Соколову", 3)]
+)
 def test_doctor_surname_stems(spoken: str, index: int) -> None:
-    names = ["Jan Kowalski", "Anna Nowak", "Maria Silva", "Jan Kowalczyk"]
+    names = ["Андрей Волков", "Ольга Морозова", "Елена Кузнецова", "Игорь Соколов"]
     assert match_doctors(spoken, names) == [index]
 
 
 def test_unrelated_surname_matches_nobody() -> None:
-    assert match_doctors("Иванов", ["Jan Kowalski", "Anna Nowak"]) == []
+    assert match_doctors("Иванов", ["Андрей Волков", "Ольга Морозова"]) == []
 
 
 @pytest.mark.parametrize(
     ("phone", "city", "expected"),
     [
-        ("501 234 567", "warszawa", "+48501234567"),
-        ("48501234567", "warszawa", "+48501234567"),
+        ("921 000 00 01", "moskva", "+79210000001"),
+        ("89210000001", "moskva", "+79210000001"),
+        ("89210000001", "kazan", "+79210000001"),
         ("0048 501 234 567", None, "+48501234567"),
-        ("+48 501-234-567", "lisboa", "+48501234567"),
-        ("912345678", "lisboa", "+351912345678"),
-        ("912345678", None, "912345678"),
+        ("+7 921-000-00-01", "novosibirsk", "+79210000001"),
+        ("9210000001", "sankt-peterburg", "+79210000001"),
+        ("9210000001", None, "9210000001"),
     ],
 )
 def test_normalize_phone(phone: str, city: str | None, expected: str) -> None:
@@ -211,13 +216,17 @@ def test_normalize_phone(phone: str, city: str | None, expected: str) -> None:
 
 
 def test_phone_variants_try_the_normalized_form_first() -> None:
-    assert phone_variants("501 234 567", "warszawa") == ["+48501234567", "501234567"]
-    assert phone_variants("+48501234567", "warszawa")[0] == "+48501234567"
+    assert phone_variants("921 000 00 01", "moskva") == [
+        "+79210000001",
+        "+9210000001",
+        "9210000001",
+    ]
+    assert phone_variants("+79210000001", "moskva")[0] == "+79210000001"
 
 
 def test_model_values_are_checked_against_the_text() -> None:
-    assert phone_in_text("+48501234567", "мой номер 501 234 567")
-    assert not phone_in_text("+4850123456", "мой номер 501 234 567")
+    assert phone_in_text("+79210000001", "мой номер 921 000 00 01")
+    assert not phone_in_text("+792100000", "мой номер 921 000 00 01")
     assert name_in_text("Иван Сидоров", "меня зовут иван сидоров")
     assert not name_in_text("Пётр Иванов", "ну как вас там")
 

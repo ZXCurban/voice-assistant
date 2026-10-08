@@ -20,10 +20,10 @@ BUILTIN: tuple[tuple[str, str, str, dict[str, str]], ...] = (
     ("хочу записаться к кардиологу", "", "book_appointment", {"specialty": "cardiology"}),
     ("завтра", "На какую дату подобрать время?", "unknown_request", {"date": "tomorrow"}),
     (
-        "в Варшаве",
+        "в Москве",
         "В каком городе или филиале вам удобнее?",
         "unknown_request",
-        {"city": "warszawa"},
+        {"city": "moskva"},
     ),
     (
         "второй",

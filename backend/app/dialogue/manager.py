@@ -307,6 +307,10 @@ class DialogueManager:
         model_date = merged.get("date", relative_date or "")
         if relative_date is not None and not model_date.startswith(_SPECIFIC_DATE_PREFIXES):
             merged["date"] = relative_date
+        if "city" in merged and not geo_service.city_mentioned(merged["city"], text):
+            # A stale model may guess a city from its old training vocabulary
+            # («warszawa» for «москва»): trust what is actually written.
+            del merged["city"]
         if "city" not in merged:
             city = geo_service.canonical_city(text)
             if city in CITIES:

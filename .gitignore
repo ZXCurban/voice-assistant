@@ -29,6 +29,11 @@ models/**/model.safetensors.tmp
 pgdata/
 redisdata/
 
+# Local generated data (dialogue dumps, NLU rows, log archives) — not tracked
+var/
+synthetic_dialogues.json
+synthetic_dialogues.jsonl
+
 # OS / editors
 .DS_Store
 .idea/

@@ -100,7 +100,7 @@ def transliterate(text: str) -> str:
 def _surname_key(text: str) -> str:
     """Comparable stem of a surname: Latinised, Polish/Russian spellings folded.
 
-    «Ковальскому», «Ковальский» and «Kowalski» all end up as «kovalsk»: case
+    «Волкову», «Волков» and «Volkov» all end up as «volkov»: case
     endings and the Russian/Polish «-ский/-ski» difference are trimmed away.
     """
     latin = transliterate(text.casefold().strip())
@@ -116,7 +116,7 @@ def match_doctors(surname: str, full_names: Sequence[str]) -> list[int]:
     """Indexes of `full_names` that match a spoken surname.
 
     The user speaks Cyrillic («Ковальскому»), the catalog may be Latin
-    («Jan Kowalski»): compare name tokens directly first, then by a
+    («Андрей Волков»): compare name tokens directly first, then by a
     case-insensitive surname stem, then fuzzily.
     """
     wanted = surname.strip().casefold()
@@ -145,15 +145,18 @@ def match_doctors(surname: str, full_names: Sequence[str]) -> list[int]:
 
 
 # Dialling codes of the cities the clinic network serves (NLU city vocabulary).
-COUNTRY_CODES = {"warszawa": "48", "lisboa": "351"}
+COUNTRY_CODES = {"moskva": "7", "sankt-peterburg": "7", "kazan": "7", "novosibirsk": "7"}
 _LOCAL_NUMBER_LENGTH = 9
 
 
 def normalize_phone(phone: str, city: str | None = None) -> str:
     """International form «+<code><number>» when the country can be told.
 
-    «501 234 567» in Warszawa → «+48501234567»; «0048…» and «48…»/«+48…» are
-    recognised; a number that cannot be placed is returned compact, unchanged.
+    «921 000 00 01» in Moskva → «+79210000001»; the Russian trunk prefix
+    («8…», 11 digits) and bare 10-digit mobiles («9…») are recognised;
+    «0048…» and «48…»/«+48…» stay recognised for other country codes via
+    the generic branches below. A number that cannot be placed is returned
+    compact, unchanged.
     """
     compact = re.sub(r"[\s\-()]", "", phone)
     digits = re.sub(r"\D", "", compact)
@@ -164,6 +167,11 @@ def normalize_phone(phone: str, city: str | None = None) -> str:
     code = COUNTRY_CODES.get(city or "")
     if code is None:
         return compact
+    if code == "7":
+        if len(digits) == 11 and digits.startswith("8"):
+            return "+7" + digits[1:]
+        if len(digits) == 10 and digits.startswith("9"):
+            return "+7" + digits
     if len(digits) == _LOCAL_NUMBER_LENGTH:
         return f"+{code}{digits}"
     if digits.startswith(code) and len(digits) == len(code) + _LOCAL_NUMBER_LENGTH:

@@ -74,6 +74,6 @@ async def test_custom_hours_replace_weekly_template(
     )
     # 12:00-14:00 @ 30 min → 4 slots, all in the custom afternoon window.
     assert len(slots) == 4
-    local_starts = [s.starts_at.astimezone(ZoneInfo("Europe/Warsaw")) for s in slots]
+    local_starts = [s.starts_at.astimezone(ZoneInfo("Europe/Moscow")) for s in slots]
     assert [d.hour for d in local_starts] == [12, 12, 13, 13]
     assert [d.minute for d in local_starts] == [0, 30, 0, 30]

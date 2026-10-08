@@ -24,7 +24,7 @@ def _signed_context(**overrides: object) -> tuple[str, str]:
         "subject": "patient-123",
         "role": "patient",
         "clinic_id": 7,
-        "clinic_city": "Warszawa",
+        "clinic_city": "Москва",
         "patient_id": 42,
         "identity_verified": True,
         "expires_at": int(time.time()) + 60,

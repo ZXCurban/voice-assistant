@@ -119,13 +119,13 @@ async def seed_db(session_factory: async_sessionmaker) -> dict:
         "стоматология",
     ]
     doctors = [
-        ("Ян Ковальский", "кардиология"),
-        ("Анна Новак", "терапия"),
+        ("Андрей Волков", "кардиология"),
+        ("Игорь Соколов", "терапия"),
         ("Иван Петров", "офтальмология"),
     ]
     async with session_factory() as s:
         clinic = await clinics_service.create_clinic(
-            s, ClinicCreate(name="Eval Clinic", timezone="Europe/Warsaw", city="Варшава")
+            s, ClinicCreate(name="Eval Clinic", timezone="Europe/Moscow", city="Москва")
         )
         dept = await catalog_service.create_department(
             s, DepartmentCreate(clinic_id=clinic.id, name="General")

@@ -39,7 +39,7 @@ Multi-clinic voice-assistant backend (MVP). `Clinic` is the tenant.
 - `schemas/` — Pydantic v2 contracts per aggregate.
 - `core/` — `Settings`, logging, domain errors (`NotFoundError`, `ConflictError`).
 - `db/` — lazy singletons (engine/session factory, Redis client) + idempotent
-  `seed_demo.py` (two clinics; never in migrations).
+  `seed_demo.py` (four Russian demo clinics; never in migrations).
 
 ## Data flow
 
