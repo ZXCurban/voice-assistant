@@ -107,6 +107,8 @@ class DialogueState:
     pending: PendingAction | None = None
     # What the NLU made of the latest utterance (read by the service for logging).
     last_parse: NluParse | None = None
+    # Consecutive misunderstood turns (escalating repeats); reset by progress.
+    repeat_count: int = 0
 
     def reset_flow(self) -> None:
         """Forget the current task, keep what identifies the user (clinic, patient)."""

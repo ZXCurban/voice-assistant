@@ -16,13 +16,15 @@ def _service(*, defer_unknown: bool = False) -> tuple[NluChatService, FakeBacken
 
 async def test_conversations_have_independent_state() -> None:
     service, backend = _service()
-    assert await service.turn("a", "хочу записаться к кардиологу", backend.execute) == t.ASK_DATE
+    assert (await service.turn("a", "хочу записаться к кардиологу", backend.execute)).startswith(
+        t.ASK_DATE
+    )
     assert service.in_dialogue("a")
     assert not service.in_dialogue("b")
     # Conversation b never asked for a specialty, so «завтра» means nothing to it.
     assert await service.turn("b", "завтра", backend.execute) == t.NOT_UNDERSTOOD
     reply = await service.turn("a", "завтра", backend.execute)
-    assert reply == t.ask_city_spec("cardiology")
+    assert reply.startswith("Да, ищу кардиолога.")
 
 
 async def test_model_name_carries_the_engine_version() -> None:

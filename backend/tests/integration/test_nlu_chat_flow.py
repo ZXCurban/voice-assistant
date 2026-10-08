@@ -63,8 +63,8 @@ async def _moscow_clinic(db_session: AsyncSession) -> dict[str, int]:
 
 
 async def _to_slot_list(session: Session) -> str:
-    assert await session.say("запишите к кардиологу") == t.ASK_DATE
-    assert await session.say("в понедельник") == t.ask_city_spec("cardiology")
+    assert (await session.say("запишите к кардиологу")).startswith(t.ASK_DATE)
+    assert (await session.say("в понедельник")).startswith("Да, ищу кардиолога.")
     return await session.say("Москва")
 
 
@@ -147,11 +147,11 @@ async def test_cancel_a_booked_appointment(db_session: AsyncSession) -> None:
     await session.say("да")
 
     other = Session(db_session)
-    assert await other.say("отмените запись") == t.ASK_CITY
+    assert (await other.say("отмените запись")).startswith(t.ASK_CITY)
     assert await other.say("Москва") == t.ASK_PHONE
     question = await other.say("+1 000 000 0001")
     assert question.startswith("Отменить запись на ")
-    assert await other.say("да") == t.CANCELLED
+    assert (await other.say("да")).startswith(t.CANCELLED)
     left = await execute_tool(
         db_session,
         "get_appointments",
@@ -199,13 +199,13 @@ def test_chat_endpoint_uses_the_nlu_when_enabled(
         first = api_client.post("/api/v1/chat", json={"message": "запишите к кардиологу"})
         assert first.status_code == 200
         body = first.json()
-        assert body["message"] == t.ASK_DATE
+        assert body["message"].startswith(t.ASK_DATE)
         assert body["model"] == nlu_service.model_name
         second = api_client.post(
             "/api/v1/chat",
             json={"message": "в понедельник", "conversation_id": body["conversation_id"]},
         )
-        assert second.json()["message"] == t.ask_city_spec("cardiology")
+        assert second.json()["message"].startswith("Да, ищу кардиолога.")
     finally:
         overrides.pop(get_redis_client, None)
         get_settings.cache_clear()

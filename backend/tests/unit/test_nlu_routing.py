@@ -42,7 +42,7 @@ def engine(monkeypatch: pytest.MonkeyPatch) -> Iterator[ScriptedEngine]:
 
 async def test_nlu_answers_and_names_itself(engine: ScriptedEngine) -> None:
     reply = await chat_service.chat("хочу записаться к кардиологу", "a", session=SESSION)
-    assert reply.message == t.ASK_DATE
+    assert reply.message.startswith(t.ASK_DATE)
     assert reply.model == "nlu:scripted"
     follow_up = await chat_service.chat("завтра", "a", session=SESSION)
     assert follow_up.model == "nlu:scripted"

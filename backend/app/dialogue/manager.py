@@ -147,8 +147,14 @@ class DialogueManager:
             state.stage,
         )
         state.last_parse = parse
+        repeats_before = state.repeat_count
         reply = await self._dispatch(state, text, parse, allow_defer=allow_defer)
-        return None if reply is None else self._say(state, reply)
+        if reply is None:
+            return None
+        if state.repeat_count == repeats_before:
+            # A productive turn resets the repeat ladder (only _unmatched raises it).
+            state.repeat_count = 0
+        return self._say(state, reply)
 
     def _say(self, state: DialogueState, reply: str) -> str:
         state.last_response = reply
@@ -169,7 +175,7 @@ class DialogueManager:
             state.options = []
             state.wants.pop("date", None)
             state.stage = Stage.ASK_DATE
-            return t.ASK_DATE
+            return t.ask_date(state.turns)
         if intent in ("confirm", "reject") and (
             state.stage is Stage.ASK_PATIENT and "patient_mode" in slots
         ):
@@ -256,12 +262,15 @@ class DialogueManager:
         if state.stage is Stage.IDLE:
             smalltalk = detect_smalltalk(text)
             if smalltalk is not None:
-                return {"thanks": t.THANKS, "bye": t.BYE}.get(smalltalk, t.FALLBACK)
+                return {"thanks": t.thanks(state.turns), "bye": t.bye(state.turns)}.get(
+                    smalltalk, t.FALLBACK
+                )
         if allow_defer and state.stage is Stage.IDLE and not parse.confident:
             return None
+        state.repeat_count += 1
         if state.stage is Stage.IDLE:
             return t.NOT_UNDERSTOOD
-        return t.repeat(state.last_response)
+        return t.repeat_escalated(state.stage, state.last_response, state.repeat_count)
 
     @staticmethod
     def _has_search_update(intent: str, slots: dict[str, str]) -> bool:
@@ -481,7 +490,7 @@ class DialogueManager:
             return t.ASK_SPEC
         if state.clinic is None:
             state.stage = Stage.ASK_CITY
-            return t.ask_city_spec(wants.get("specialty"))
+            return t.ask_city_spec(wants.get("specialty"), state.turns)
         args: dict[str, Any] = {"clinic_id": state.clinic.id}
         if "specialty" in wants:
             args["specialty_name"] = wants["specialty"]
@@ -524,10 +533,10 @@ class DialogueManager:
             return t.ASK_SPEC
         if not state.nearest and "date" not in wants:
             state.stage = Stage.ASK_DATE
-            return t.ASK_DATE
+            return t.ask_date(state.turns)
         if state.clinic is None:
             state.stage = Stage.ASK_CITY
-            return t.ask_city_spec(wants.get("specialty"))
+            return t.ask_city_spec(wants.get("specialty"), state.turns)
         return await self._search_and_offer(state)
 
     def _today(self, clinic: ClinicRef) -> date:
@@ -557,7 +566,7 @@ class DialogueManager:
         clinic = state.clinic
         if clinic is None:
             state.stage = Stage.ASK_CITY
-            return t.ask_city_spec(state.wants.get("specialty"))
+            return t.ask_city_spec(state.wants.get("specialty"), state.turns)
         target = await self._search_target(state, clinic)
         if isinstance(target, str):
             return target
@@ -799,7 +808,7 @@ class DialogueManager:
         clinic = state.clinic
         if clinic is None:
             state.stage = Stage.ASK_CITY
-            return t.ASK_CITY
+            return t.ask_city(state.turns)
         missing = await self._identify_patient(state, allow_new=False)
         if missing is not None:
             return missing
@@ -912,16 +921,16 @@ class DialogueManager:
         record: RecordOption | None,
     ) -> str:
         if pending.kind == "cancel":
-            return t.CANCELLED
+            return f"{t.CANCELLED} {t.cancelled_tail(state.turns)}"
         suffix = ""
         if slot is not None:
             suffix = f" {slot.doctor.name}, {t.dm(slot.day)} в {slot.hm}."
         if pending.kind == "reschedule":
-            return t.RESCHEDULED + suffix
+            return f"{t.RESCHEDULED}{suffix} {t.rescheduled_tail(state.turns)}"
         patient = _details(result).get("appointment", {}).get("patient")
         if isinstance(patient, dict) and isinstance(patient.get("id"), int):
             state.patient_id = patient["id"]
-        return t.BOOKED + suffix
+        return f"{t.BOOKED}{suffix} {t.booked_tail(state.turns)}"
 
 
 _PROFILE_KEYS: Iterable[str] = ("patient_mode", "phone", "full_name")

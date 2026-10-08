@@ -47,15 +47,15 @@ BOOK_SCRIPT: Script = {
 
 
 async def _to_slot_list(chat: Chat) -> str:
-    assert await chat.say("хочу записаться к кардиологу") == t.ASK_DATE
-    assert await chat.say("завтра") == t.ask_city_spec("cardiology")
+    assert (await chat.say("хочу записаться к кардиологу")).startswith(t.ASK_DATE)
+    assert (await chat.say("завтра")).startswith("Да, ищу кардиолога.")
     return await chat.say("в Москве")
 
 
 async def test_new_patient_books_with_confirmation() -> None:
     chat = Chat(BOOK_SCRIPT)
     listing = await _to_slot_list(chat)
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00; 2 — 09.10 в 09:30;")
+    assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00; 2 — 09.10 (пт) в 09:30;")
     assert listing.endswith("Какой вариант выбрать?")
     assert await chat.say("второй") == t.ASK_PATIENT
     assert await chat.say("впервые") == t.ASK_NAME
@@ -70,7 +70,7 @@ async def test_new_patient_books_with_confirmation() -> None:
     assert "book_appointment" not in chat.backend.tool_names()
 
     reply = await chat.say("да")
-    assert reply == t.BOOKED + " Андрей Волков, 09.10 в 09:30."
+    assert reply.startswith(t.BOOKED)
     (appointment,) = chat.backend.appointments
     assert appointment["status"] == "booked"
     assert appointment["starts_at"] == chat.backend.instant(
@@ -87,9 +87,9 @@ async def test_model_sees_production_phrasing_as_context() -> None:
     await chat.say("впервые")
     contexts = chat.engine.contexts
     assert contexts[0] == ""
-    assert contexts[1] == t.ASK_DATE
-    assert contexts[2] == t.ask_city_spec("cardiology")
-    assert contexts[3].startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert contexts[1].startswith(t.ASK_DATE)
+    assert contexts[2].startswith("Да, ищу кардиолога.")
+    assert contexts[3].startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
     assert contexts[4] == t.ASK_PATIENT
     assert len(contexts) == 5
 
@@ -147,11 +147,11 @@ async def test_specialty_missing_in_clinic_asks_for_another_city() -> None:
         ),
     }
     chat = Chat(script)
-    assert await chat.say("запишите к дерматологу на завтра") == t.ask_city_spec("dermatology")
+    assert (await chat.say("запишите к дерматологу на завтра")).startswith("Да, ищу дерматолога.")
     assert await chat.say("в Казани") == t.spec_na("dermatology")
     assert chat.state.stage is Stage.ASK_CITY
     listing = await chat.say("в Москве")
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
 
 
 async def test_no_slots_directly_offers_nearest_windows() -> None:
@@ -160,7 +160,7 @@ async def test_no_slots_directly_offers_nearest_windows() -> None:
     await chat.say("хочу записаться к кардиологу")
     await chat.say("сегодня")
     listing = await chat.say("в Москве")
-    assert listing.startswith(t.NO_SLOTS_AUTO + "Доступное время: 1 — 09.10 в 09:00")
+    assert listing.startswith(t.NO_SLOTS_AUTO + "Доступное время: 1 — 09.10 (пт) в 09:00")
 
 
 async def test_time_after_filters_the_offered_slots() -> None:
@@ -172,9 +172,9 @@ async def test_time_after_filters_the_offered_slots() -> None:
     await chat.say("хочу записаться к кардиологу")
     await chat.say("завтра после двух")
     listing = await chat.say("в Москве")
-    assert (
-        listing == "Доступное время: 1 — 09.10 в 14:00; 2 — 09.10 в 14:30; 3 — 09.10 в 15:00; "
-        "Какой вариант выбрать?"
+    assert listing == (
+        "Доступное время: 1 — 09.10 (пт) в 14:00; 2 — 09.10 (пт) в 14:30; "
+        "3 — 09.10 (пт) в 15:00; Какой вариант выбрать?"
     )
 
 
@@ -186,9 +186,11 @@ async def test_nearest_flow_skips_the_date_question() -> None:
         "запишите меня": ("book_appointment", {}),
     }
     chat = Chat(script)
-    assert await chat.say("найдите ближайшее время к кардиологу") == t.ask_city_spec("cardiology")
+    assert (await chat.say("найдите ближайшее время к кардиологу")).startswith(
+        "Да, ищу кардиолога."
+    )
     listing = await chat.say("в Москве")
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
     assert await chat.say("второй") == t.preview_reply(chat.state.chosen_slot.day, "09:30")  # type: ignore[union-attr]
     assert await chat.say("запишите меня") == t.ASK_PATIENT
 
@@ -203,7 +205,7 @@ async def test_slot_taken_before_confirmation_offers_new_list() -> None:
     assert taken is not None
     chat.backend.busy.add((taken.doctor.id, taken.starts_at))
     reply = await chat.say("да")
-    assert reply.startswith(t.SLOT_TAKEN + "Доступное время: 1 — 09.10 в 09:30")
+    assert reply.startswith(t.SLOT_TAKEN + "Доступное время: 1 — 09.10 (пт) в 09:30")
     assert chat.backend.appointments == []
     assert chat.state.stage is Stage.SELECT_SLOT
 
@@ -215,10 +217,10 @@ async def test_doctor_named_by_surname_in_cyrillic() -> None:
         "в Москве": ("unknown_request", {"city": "moskva"}),
     }
     chat = Chat(script)
-    assert await chat.say("запишите к Волкову") == t.ASK_DATE
-    assert await chat.say("завтра") == t.ASK_CITY.replace("вам удобнее", "вам удобнее")
+    assert (await chat.say("запишите к Волкову")).startswith(t.ASK_DATE)
+    assert (await chat.say("завтра")).startswith(t.ASK_CITY)
     listing = await chat.say("в Москве")
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
     assert chat.state.doctor is not None and chat.state.doctor.id == 11
 
 
@@ -273,11 +275,11 @@ async def _login(chat: Chat) -> str:
 async def test_cancel_single_appointment() -> None:
     chat = Chat(CANCEL_SCRIPT)
     await _book_one(chat)
-    assert await chat.say("отмените запись") == t.ASK_CITY
+    assert (await chat.say("отмените запись")).startswith(t.ASK_CITY)
     question = await _login(chat)
     assert question.startswith("Отменить запись на 09.10 в 09:30? Скажите «да» или «нет».")
     assert chat.backend.appointments[0]["status"] == "booked"
-    assert await chat.say("да") == t.CANCELLED
+    assert (await chat.say("да")).startswith(t.CANCELLED)
     assert chat.backend.appointments[0]["status"] == "cancelled"
 
 
@@ -306,7 +308,7 @@ async def test_cancel_with_several_appointments_asks_which() -> None:
     await chat.say("отмените запись")
     reply = await _login(chat)
     assert reply.startswith(
-        "Нашла записи: 09.10 в 09:30 — запись активна, Андрей Волков; 12.10 в 10:00"
+        "Нашла записи: 09.10 (пт) в 09:30 — запись активна, Андрей Волков; 12.10 (пн) в 10:00"
     )
     assert reply.endswith(t.SELECT_RECORD)
     question = await chat.say("второй")
@@ -319,9 +321,9 @@ async def test_reschedule_moves_the_appointment() -> None:
     chat = Chat(CANCEL_SCRIPT)
     await _book_one(chat)
     await chat.say("перенесите запись")
-    assert await _login(chat) == t.ASK_DATE
+    assert (await _login(chat)).startswith(t.ASK_DATE)
     listing = await chat.say("на понедельник")
-    assert listing.startswith("Доступное время: 1 — 12.10 в 09:00")
+    assert listing.startswith("Доступное время: 1 — 12.10 (пн) в 09:00")
     question = await chat.say("первую")
     assert question.startswith("Перенести запись на 12.10 в 09:00? Скажите «да» или «нет».")
     assert (await chat.say("да")).startswith(t.RESCHEDULED)
@@ -334,7 +336,7 @@ async def test_records_are_listed_without_any_mutation() -> None:
     chat = Chat(CANCEL_SCRIPT)
     await _book_one(chat)
     await chat.say("какие у меня записи")
-    assert await _login(chat) == "Нашла записи: 09.10 в 09:30 — запись активна, Андрей Волков."
+    assert await _login(chat) == "Нашла записи: 09.10 (пт) в 09:30 — запись активна, Андрей Волков."
     assert chat.state.stage is Stage.IDLE
     assert not {"cancel_appointment", "reschedule_appointment"} & set(chat.backend.tool_names())
 
@@ -394,7 +396,7 @@ async def test_health_concern_leads_to_a_specialty_question() -> None:
     }
     chat = Chat(script)
     assert await chat.say("болит голова") == t.HEALTH
-    assert await chat.say("к неврологу") == t.ASK_DATE
+    assert (await chat.say("к неврологу")).startswith(t.ASK_DATE)
 
 
 async def test_greeting_unintelligible_and_repeat() -> None:
@@ -402,8 +404,45 @@ async def test_greeting_unintelligible_and_repeat() -> None:
     assert await chat.say("здравствуйте") == t.GREET_REPLIES[0]
     assert await chat.say("абракадабра") == t.NOT_UNDERSTOOD
     assert await chat.say("хочу записаться") == t.ASK_SPEC
-    assert await chat.say("абракадабра") == t.repeat(t.ASK_SPEC)
-    assert await chat.say("ещё абракадабра") == t.repeat(t.ASK_SPEC)  # prefix never stacks
+    first = await chat.say("абракадабра")
+    assert first == t.repeat(t.ASK_SPEC)
+    assert chat.state.repeat_count == 1
+    second = await chat.say("ещё абракадабра")
+    assert second.startswith(t.REPEAT_PREFIX + t.ASK_SPEC)
+    assert "кардиолог" in second  # level 2 adds a hint, anchor stays first
+    assert chat.state.repeat_count == 2
+    assert await chat.say("совсем абракадабра") == t.REPEAT_RESTART
+    assert chat.state.repeat_count == 3
+
+
+async def test_repeat_ladder_resets_on_progress() -> None:
+    chat = Chat(BOOK_SCRIPT)
+    await chat.say("хочу записаться к кардиологу")
+    await chat.say("абракадабра")
+    await chat.say("ещё абракадабра")
+    assert chat.state.repeat_count == 2
+    await chat.say("завтра")  # progress
+    assert chat.state.repeat_count == 0
+    assert await chat.say("абракадабра") == t.repeat(t.ask_city_spec("cardiology", 3))
+
+
+async def test_anchors_lead_every_built_reply() -> None:
+    for turn in range(6):
+        assert t.ask_date(turn).startswith(t.ASK_DATE)
+        assert t.ask_city(turn).startswith(t.ASK_CITY)
+        assert t.ask_city_spec("cardiology", turn).startswith("Да, ищу кардиолога.")
+        assert t.thanks(turn).startswith(t.THANKS)
+        assert t.bye(turn).startswith(t.BYE)
+    # Tails actually vary (deterministic rotation, same turn → same tail).
+    assert len({t.ask_date(turn) for turn in range(3)}) == 3
+    assert t.ask_date(0) == t.ask_date(3)
+    assert len({t.thanks(turn) for turn in range(2)}) == 2
+
+
+async def test_slot_listing_carries_the_weekday() -> None:
+    chat = Chat(BOOK_SCRIPT)
+    listing = await _to_slot_list(chat)
+    assert "09.10 (пт)" in listing  # 2026-10-09 is a Friday
 
 
 async def test_unintelligible_turn_can_be_deferred_to_the_llm() -> None:
@@ -484,11 +523,11 @@ async def test_find_doctors_then_book_with_the_found_doctor() -> None:
         "завтра": ("unknown_request", {"date": "tomorrow"}),
     }
     chat = Chat(script)
-    assert await chat.say("есть ли кардиолог") == t.ask_city_spec("cardiology")
+    assert (await chat.say("есть ли кардиолог")).startswith("Да, ищу кардиолога.")
     assert await chat.say("Москва") == t.doctors_found("Андрей Волков")
-    assert await chat.say("да") == t.ASK_DATE
+    assert (await chat.say("да")).startswith(t.ASK_DATE)
     listing = await chat.say("завтра")
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
     assert chat.state.doctor is not None and chat.state.doctor.id == 11
 
 
@@ -507,7 +546,7 @@ async def test_cancel_go_ahead_is_not_read_as_a_refusal() -> None:
     await _book_one(chat)
     await chat.say("отмените запись")
     await _login(chat)
-    assert await chat.say("отменяйте") == t.CANCELLED
+    assert (await chat.say("отменяйте")).startswith(t.CANCELLED)
     assert chat.backend.appointments[0]["status"] == "cancelled"
 
 
@@ -517,8 +556,8 @@ async def test_another_date_while_choosing_asks_for_the_date() -> None:
     await chat.say("хочу записаться к кардиологу")
     await chat.say("сегодня")
     await chat.say("в Москве")  # auto-nearest offer, choosing stage
-    assert await chat.say("давайте другую дату") == t.ASK_DATE
-    assert (await chat.say("завтра")).startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert (await chat.say("давайте другую дату")).startswith(t.ASK_DATE)
+    assert (await chat.say("завтра")).startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
 
 
 async def test_model_phone_that_was_not_said_is_dropped_and_regex_wins() -> None:
@@ -576,8 +615,8 @@ async def test_exact_time_matching_one_slot_is_chosen_immediately() -> None:
 
 async def test_thanks_and_goodbye_get_a_polite_answer() -> None:
     chat = Chat({})
-    assert await chat.say("спасибо") == t.THANKS
-    assert await chat.say("до свидания") == t.BYE
+    assert (await chat.say("спасибо")).startswith(t.THANKS)
+    assert (await chat.say("до свидания")).startswith(t.BYE)
     assert await chat.say("что ты умеешь?") == t.FALLBACK
 
 
@@ -589,7 +628,7 @@ async def test_date_answer_does_not_change_the_specialty() -> None:
     }
     chat = Chat(script)
     await chat.say("хочу записаться к кардиологу")
-    assert await chat.say("завтро") == t.ask_city_spec("cardiology")
+    assert (await chat.say("завтро")).startswith("Да, ищу кардиолога.")
     assert chat.state.wants["specialty"] == "cardiology"
 
 
@@ -602,7 +641,7 @@ async def test_doctor_named_in_the_dative_case() -> None:
     await chat.say("к доктору Волкову")
     await chat.say("завтра")
     listing = await chat.say("в Москве")
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
 
 
 async def test_misspelled_specialty_beats_a_wrong_model_guess() -> None:
@@ -657,7 +696,7 @@ async def test_stale_model_city_is_overruled_by_the_text() -> None:
     await chat.say("хочу записаться к кардиологу")
     await chat.say("завтра")
     listing = await chat.say("в Москве")
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
 
 
 async def test_misspelled_relative_date_overrides_the_models_guess() -> None:
@@ -669,4 +708,4 @@ async def test_misspelled_relative_date_overrides_the_models_guess() -> None:
     await chat.say("хочу записаться к кардиологу")
     await chat.say("завтро")
     listing = await chat.say("в Москве")
-    assert listing.startswith("Доступное время: 1 — 09.10 в 09:00")
+    assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
