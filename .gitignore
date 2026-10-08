@@ -20,8 +20,10 @@ htmlcov/
 # Alembic revisions ARE tracked (backend/alembic/versions/*.py): a fresh
 # clone must run `alembic upgrade head` with zero local generation.
 
-# NLU weights (ml-training artifacts) are large and never committed
-models/
+# NLU weights are committed split into <100 MB parts (models/nlu/**/model.safetensors.partNN);
+# the joined file is built on first start (python -m app.nlu.weights models/nlu).
+models/**/model.safetensors
+models/**/model.safetensors.tmp
 
 # Docker / data
 pgdata/

@@ -1,0 +1,14 @@
+{
+  "method": "temperature_scaling",
+  "fit_on": "validation",
+  "temperature": 1.0446877479553223,
+  "threshold": 0.95,
+  "threshold_info": {
+    "youden_j": 0.6206172388604821,
+    "coverage": 0.9920116194625999,
+    "selective_accuracy": 0.9978038067349927
+  },
+  "val_accuracy": 0.9941902687000727,
+  "val_mean_confidence": 0.9965304136276245,
+  "n_val": 1377
+}

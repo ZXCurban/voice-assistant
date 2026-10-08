@@ -11,7 +11,13 @@ COPY backend/ ./backend/
 
 # EXTRAS="[nlu]" adds torch/transformers for the local NLU (large image, see README).
 ARG EXTRAS=""
-RUN pip install --upgrade pip && pip install ".${EXTRAS}"
+ARG PIP_EXTRA_INDEX_URL=""
+RUN pip install --upgrade pip && \
+    if [ -n "$PIP_EXTRA_INDEX_URL" ]; then \
+        pip install --extra-index-url "$PIP_EXTRA_INDEX_URL" ".${EXTRAS}"; \
+    else \
+        pip install ".${EXTRAS}"; \
+    fi
 
 WORKDIR /code/backend
 

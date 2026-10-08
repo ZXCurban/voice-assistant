@@ -15,6 +15,7 @@ from typing import Any, Protocol
 
 from app.nlu.contract import INTENTS, build_model_input, clean_slots, parse_slots_linear
 from app.nlu.schemas import NluParse
+from app.nlu.weights import WeightsError, ensure_weights
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,10 @@ class TorchNluEngine:
     def __init__(self, model_dir: Path, *, min_confidence: float | None = None) -> None:
         intent_dir = model_dir / "intent" / "pytorch"
         slots_dir = model_dir / "slots" / "pytorch"
+        try:
+            ensure_weights(model_dir)  # joins model.safetensors.part* on first start
+        except (WeightsError, OSError) as exc:
+            raise NluUnavailableError(f"NLU weights cannot be prepared: {exc}") from exc
         for required in (intent_dir / "model.safetensors", slots_dir / "model.safetensors"):
             if not required.is_file():
                 raise NluUnavailableError(f"NLU weights not found: {required}")

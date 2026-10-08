@@ -124,23 +124,30 @@ NLU context. Typos and model slips are covered by deterministic fallbacks
 (phone/name verification against the typed text, fuzzy specialty and
 «завтра», doctor surnames in any Russian case, `+48`/`+351` normalisation).
 
+The trained weights are in the repository: `models/nlu/` has the
+`ml-training` layout (`intent/pytorch`, `slots/pytorch`, `intent/calibration.json`)
+with every `model.safetensors` cut into `*.partNN` files under 90 MB (GitHub's
+limit is 100 MB) and a `SHA256SUMS`. The app joins and verifies them on first
+start (or run `make nlu-weights`), so `git clone` is enough.
+
 ```bash
 pip install ".[nlu]"        # torch + transformers + sentencepiece (CPU wheel is enough)
-# weights: the ml-training `artifacts/` directory
-#   intent/pytorch, intent/calibration.json, slots/pytorch
-python -m app.nlu.smoke --model-dir ../ml-training/artifacts     # from backend/, no DB needed
-NLU_ENABLED=true NLU_MODEL_DIR=../ml-training/artifacts \
-  uvicorn app.main:app --app-dir backend --port 8001             # chat UI: /static/chat.html
+make nlu-weights            # optional: join + verify the weights now
+cd backend && python -m app.nlu.smoke --model-dir ../models/nlu   # no DB needed
+NLU_ENABLED=true NLU_MODEL_DIR=models/nlu uvicorn app.main:app --app-dir backend --port 8001
+# or the whole stack in Docker (CPU torch, ~3 GB RAM):
+make up-nlu                 # chat UI: http://localhost:8000/static/chat.html
 ```
 
 Settings: `NLU_ENABLED`, `NLU_MODEL_DIR`, `NLU_MIN_CONFIDENCE` (override the
 calibrated threshold), `NLU_LLM_FALLBACK` (hand utterances the NLU cannot
 parse to the LLM loop; otherwise a clarifying template is returned). If the
 weights cannot be loaded the app logs it and keeps working on the LLM path.
-Docker: `docker build --build-arg EXTRAS="[nlu]" .` and mount the weights at
-`NLU_MODEL_DIR`. Dialogue state lives in process memory like the LLM history
-(one worker, or sticky sessions). The models are loaded at startup (~1 GB RAM);
-a CPU turn takes well under a second.
+Docker: `docker-compose.nlu.yml` builds with `EXTRAS=[nlu]` and mounts
+`./models/nlu` (writable: the joined weights are written there).
+Dialogue state lives in process memory like the LLM history (one worker, or
+sticky sessions). The models are loaded at startup (~1 GB of weights; budget
+~3 GB RAM). CPU latency per turn has not been measured yet.
 
 ## API surfaces
 

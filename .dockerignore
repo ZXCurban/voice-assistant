@@ -21,3 +21,4 @@ redisdata/
 .vscode/
 docs/
 infra/
+models/

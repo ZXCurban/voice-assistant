@@ -1,0 +1,36 @@
+{
+  "intents": [
+    "greeting",
+    "confirm",
+    "reject",
+    "select_option",
+    "book_appointment",
+    "find_nearest_slots",
+    "find_slots",
+    "find_doctors",
+    "find_clinics",
+    "cancel_appointment",
+    "reschedule_appointment",
+    "get_appointments",
+    "get_appointment",
+    "health_concern",
+    "unknown_request"
+  ],
+  "label2id": {
+    "greeting": 0,
+    "confirm": 1,
+    "reject": 2,
+    "select_option": 3,
+    "book_appointment": 4,
+    "find_nearest_slots": 5,
+    "find_slots": 6,
+    "find_doctors": 7,
+    "find_clinics": 8,
+    "cancel_appointment": 9,
+    "reschedule_appointment": 10,
+    "get_appointments": 11,
+    "get_appointment": 12,
+    "health_concern": 13,
+    "unknown_request": 14
+  }
+}

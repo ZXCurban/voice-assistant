@@ -1,6 +1,6 @@
 # Canonical checks (mirrored in AGENTS.md and .github/workflows/ci.yml):
 #   ruff check backend | ruff format --check backend | mypy backend/app | pytest
-.PHONY: install dev lint format typecheck test migrate revision up down docker-build compose-config demo seed
+.PHONY: install dev lint format typecheck test migrate revision up up-nlu nlu-weights down docker-build compose-config demo seed
 
 install:
 	pip install -e ".[dev]"
@@ -30,6 +30,12 @@ revision:
 
 up:
 	docker compose up --build
+
+up-nlu:
+	docker compose -f docker-compose.yml -f docker-compose.nlu.yml up --build
+
+nlu-weights:
+	cd backend && python -m app.nlu.weights ../models/nlu
 
 down:
 	docker compose down

@@ -1,0 +1,21 @@
+# NLU chat (ml-training models, no LLM server needed):
+#   docker compose -f docker-compose.yml -f docker-compose.nlu.yml up -d --build
+# The weights live in ./models/nlu (split in git, joined on first start), so
+# the mount must be writable. First start loads ~1 GB of models: give the api
+# container ~3 GB of RAM and a minute before /health answers.
+services:
+  api:
+    build:
+      context: .
+      args:
+        EXTRAS: "[nlu]"
+        # CPU-only torch wheel (the default PyPI one drags in ~2 GB of CUDA libraries).
+        PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+    environment:
+      NLU_ENABLED: "true"
+      NLU_MODEL_DIR: /models/nlu
+      NLU_LLM_FALLBACK: "false"
+    volumes:
+      - ./models/nlu:/models/nlu
+    # No --reload: it would reload the models on every file change.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
