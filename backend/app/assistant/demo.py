@@ -9,7 +9,7 @@ Flow: find_slots (dermatology) -> book preview (confirmation_required)
 """
 
 import asyncio
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -61,7 +61,7 @@ async def main() -> None:
                 break
         assert target is not None and slots, "seed has no cardiology slots?"
         first_slot = slots[0]
-        first_instant = str(first_slot["starts_at"])
+        first_instant = datetime.fromisoformat(str(first_slot["starts_at"]))
         assert isinstance(first_slot["doctor"], dict)
         first_doctor_id = int(first_slot["doctor"]["id"])
         print(f"slots on {target}: {[s['starts_at'] for s in slots[:3]]}")
@@ -94,7 +94,7 @@ async def main() -> None:
                 clinic_id=clinic_id,
                 patient_id=patient_id,
                 doctor_id=first_doctor_id,
-                starts_at=first_instant,  # type: ignore[arg-type]
+                starts_at=first_instant,
             ),
         )
         _show("book preview", preview)
@@ -108,7 +108,7 @@ async def main() -> None:
                 clinic_id=clinic_id,
                 patient_id=patient_id,
                 doctor_id=first_doctor_id,
-                starts_at=first_instant,  # type: ignore[arg-type]
+                starts_at=first_instant,
                 confirmed=True,
             ),
         )

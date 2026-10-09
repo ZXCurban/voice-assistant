@@ -20,6 +20,7 @@ from app.assistant.schemas import (
 from app.core.errors import ConflictError, NotFoundError
 from app.models.appointment import Appointment
 from app.models.doctor import Doctor
+from app.models.patient import Patient
 from app.models.specialty import Specialty
 from app.schemas.appointment import (
     AppointmentCreate,
@@ -62,6 +63,11 @@ _CONFLICT_CODES = {
 }
 
 _APPOINTMENT_STATUSES = ("booked", "cancelled", "completed")
+
+# Upper bound for day-by-day nearest-slot scans. The slot service enforces
+# its own 90-day horizon per day; this cap keeps multi-day scans bounded
+# and consistent with the request schema (days_ahead <= 30).
+MAX_SCAN_DAYS = 90
 
 
 def _ok(code: str, message: str, details: dict[str, Any] | None = None) -> AssistantResult:
@@ -159,7 +165,7 @@ class AssistantOrchestrator:
 
     async def _ensure_patient(
         self, session: AsyncSession, clinic_id: int, full_name: str, phone: str
-    ) -> tuple[Any, int]:
+    ) -> tuple[Patient, int]:
         """Find by phone or register; returns (patient, patient_id)."""
         patient, _ = await patients_service.get_or_create_patient(
             session, clinic_id, full_name, phone
@@ -421,15 +427,20 @@ class AssistantOrchestrator:
             return target
         doctor_id, specialty_id = target
         start = request.date or date_type.today() + timedelta(days=1)
-        days = request.days_ahead or 10
+        days = min(request.days_ahead or 10, MAX_SCAN_DAYS)
         clinic = await clinics_service.get_clinic(session, clinic_id)
         checked: list[str] = []
         for offset in range(days):
             day = start + timedelta(days=offset)
             checked.append(day.isoformat())
-            slots = await availability_service.search_slots(
-                session, clinic_id, day, specialty_id=specialty_id, doctor_id=doctor_id
-            )
+            try:
+                slots = await availability_service.search_slots(
+                    session, clinic_id, day, specialty_id=specialty_id, doctor_id=doctor_id
+                )
+            except ValueError:
+                # Day beyond the slot horizon (or bad clinic tz): stop the
+                # scan gracefully instead of failing the whole intent.
+                break
             if request.time_after is not None or request.time_at is not None:
                 slots = availability_service.filter_slots_after_local_time(
                     slots,

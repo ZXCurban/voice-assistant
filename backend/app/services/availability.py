@@ -266,7 +266,5 @@ async def search_slots(
     out: list[SlotOut] = []
     for doctor in doctors:
         out.extend(await get_doctor_slots(session, clinic_id, doctor.id, target, now_utc=now_utc))
-        if len(out) >= limit:
-            break
     out.sort(key=lambda s: (s.starts_at, s.doctor.id))
     return out[:limit]

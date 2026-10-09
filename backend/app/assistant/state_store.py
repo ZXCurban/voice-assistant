@@ -79,9 +79,13 @@ class RedisDialogueStateStore:
                 raise StateStoreUnavailableError from exc
 
     async def _acquire(self, lock_key: str) -> str:
+        # Lock TTL covers a long NLU/LLM turn (up to 5 min) so the lock
+        # cannot expire mid-turn, but stays well below the state TTL to
+        # bound the blackout after a process crash.
+        lock_ttl = max(60, min(self.ttl_seconds, 300))
         token = uuid.uuid4().hex
         for _ in range(80):
-            acquired = await self.redis.set(lock_key, token, nx=True, ex=60)
+            acquired = await self.redis.set(lock_key, token, nx=True, ex=lock_ttl)
             if acquired:
                 return token
             await asyncio.sleep(0.025)

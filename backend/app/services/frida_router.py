@@ -233,7 +233,8 @@ def apply_policy(
 def create_real_judge(*, threads: int = 4) -> JudgeProtocol:
     """Load the real OnnxJudge (CPU int8). Heavy: downloads ~1.2 GB once."""
     import importlib  # lazy: keeps unit tests dependency-free
+    from typing import cast
 
     mod = importlib.import_module("frida_decisions")
     judge = mod.OnnxJudge.from_pretrained(FRIDA_MODEL_ID, threads=threads)
-    return judge  # type: ignore[no-any-return]
+    return cast("JudgeProtocol", judge)

@@ -21,6 +21,10 @@ class TenantScopeMismatchError(Exception):
     """A request addresses another tenant; avoid exposing tenant existence."""
 
 
+class MalformedRequestError(ValueError):
+    """The HTTP framing itself is unreadable (bad length, aborted body)."""
+
+
 class TrustedChannelContextMiddleware:
     """Authenticate versioned API calls and enforce the signed clinic scope.
 
@@ -59,6 +63,9 @@ class TrustedChannelContextMiddleware:
         except AuthorizationDeniedError:
             await self._respond(scope, send, 403, "Forbidden")
             return
+        except MalformedRequestError:
+            await self._respond(scope, send, 400, "Malformed request")
+            return
         except (KeyError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
             await self._respond(scope, send, 401, "Invalid trusted channel context")
             return
@@ -84,15 +91,20 @@ class TrustedChannelContextMiddleware:
         receive: Receive, headers: dict[bytes, bytes]
     ) -> tuple[dict[str, object], list[Message]]:
         content_length = headers.get(b"content-length")
-        if content_length and int(content_length) > MAX_JSON_BODY:
-            raise OverflowError
+        if content_length:
+            try:
+                declared = int(content_length)
+            except ValueError as exc:
+                raise MalformedRequestError(f"bad content-length: {content_length!r}") from exc
+            if declared > MAX_JSON_BODY:
+                raise OverflowError
         messages: list[Message] = []
         chunks: list[bytes] = []
         size = 0
         while True:
             message = await receive()
             if message["type"] == "http.disconnect":
-                break
+                raise MalformedRequestError("client disconnected mid-body")
             messages.append(message)
             chunk = message.get("body", b"")
             size += len(chunk)

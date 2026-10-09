@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError, NotFoundError
 from app.models.appointment import (
+    APPOINTMENT_STATUSES,
     STATUS_BOOKED,
     STATUS_CANCELLED,
     STATUS_COMPLETED,
@@ -113,6 +114,12 @@ async def list_appointments(
     await require_clinic(session, clinic_id)
     if patient_id is None and doctor_id is None:
         raise ValueError("patient_id or doctor_id filter is required")
+    if status is not None and status not in APPOINTMENT_STATUSES:
+        raise ValueError(f"unknown status: {status!r}")
+    coerced_from = coerce_utc(date_from)
+    coerced_to = coerce_utc(date_to)
+    if coerced_from is not None and coerced_to is not None and coerced_from > coerced_to:
+        raise ValueError("date_from must not be after date_to")
     if patient_id is not None:
         await patients_service.get_patient(session, clinic_id, patient_id)
     if doctor_id is not None:
@@ -122,8 +129,8 @@ async def list_appointments(
         clinic_id,
         patient_id=patient_id,
         doctor_id=doctor_id,
-        date_from=coerce_utc(date_from),
-        date_to=coerce_utc(date_to),
+        date_from=coerced_from,
+        date_to=coerced_to,
         status=status,
         limit=limit,
         offset=offset,
@@ -155,12 +162,16 @@ async def reschedule_appointment(
     )
     session.add(replacement)
     try:
+        async with session.begin_nested():
+            await session.flush()
+    except IntegrityError as exc:
+        raise ConflictError("slot unavailable") from exc
+    old.status = STATUS_CANCELLED
+    try:
         await session.flush()
     except IntegrityError as exc:
         await session.rollback()
         raise ConflictError("slot unavailable") from exc
-    old.status = STATUS_CANCELLED
-    await session.flush()
     await session.commit()
     loaded = await appointments_repo.get_appointment(session, clinic_id, replacement.id)
     assert loaded is not None

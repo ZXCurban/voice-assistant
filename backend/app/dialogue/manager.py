@@ -646,6 +646,9 @@ class DialogueManager:
             state.doctor = None
             state.stage = Stage.ASK_SPECIALTY
             return t.NO_DOCTORS
+        if code == "INVALID_INPUT" and "horizon" in str(result.get("message", "")).lower():
+            # Past-the-horizon days carry no slots: treat as empty, not ERROR.
+            return None
         logger.warning("slot search failed: %s", code)
         state.reset_flow()
         return t.ERROR

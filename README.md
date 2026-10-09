@@ -29,7 +29,7 @@ backend/
   tests/
     unit/              # pure slot math, no infra
     integration/       # lifecycle/isolation/exceptions/HTTP (file-SQLite)
-  alembic/versions/    # 0001_multi_clinic_platform
+  alembic/versions/    # 0001_multi_clinic_platform + 0002_clinic_geo
 ```
 
 Layering: `api → services → repositories → models/db`. No imports upward.

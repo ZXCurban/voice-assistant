@@ -149,9 +149,10 @@ python scripts/export_dialogue_logs.py --input var/assistant_dialogues.jsonl \
 ## What is deliberately absent
 
 No ToolRegistry/plugin framework (explicit `handle` dispatch is enough),
-no conversation-history storage, no Redis, no auth, no LLM/STT/TTS SDKs.
-`AssistantOrchestrator` is stateless; all state lives in the dialogue
-layer (`AssistantContext`) or PostgreSQL.
+no LLM/STT/TTS SDKs in the deterministic path. `AssistantOrchestrator`
+is stateless; dialogue state lives in Redis (short TTL, scoped by signed
+principal + clinic) or PostgreSQL. Production chat requires the signed
+trusted-channel context (`app/api/trusted_context.py`).
 
 ## NLU front end (ml-training models)
 

@@ -7,11 +7,10 @@ optional FRIDA policy, `AssistantOrchestrator`, and response templates. The
 existing response fields stay `conversation_id`, `message`, and `model`; the
 new path reports `model: deterministic`.
 
-This repository contains no STT/TTS adapters, trained NLU checkpoint, or
-installed FRIDA runtime. NLU is currently a Russian high-precision rules
-baseline with typed intent and slot confidence, intended to establish the
-fine-tuning contract. It does not cover the full range of speech variations.
-FRIDA is optional because its runtime downloads about 1.2 GB at first use.
+This repository contains no STT/TTS adapters. The trained NLU checkpoint
+ships under `models/nlu/` (see README «Local NLU») and FRIDA remains an
+optional ~1.2 GB runtime. The default chat path is still a Russian
+high-precision rules baseline with typed intent and slot confidence.
 When enabled, it receives normalized JSON and cannot access backend services.
 
 Backend responses are rendered by
@@ -35,7 +34,8 @@ Multi-clinic voice-assistant backend (MVP). `Clinic` is the tenant.
 - `repositories/` — thin typed queries per aggregate, always `clinic_id`-scoped.
 - `models/` — 10 ORM entities (`clinics`, `specialties`, `departments`,
   `rooms`, `doctors`, `patients`, `appointments`, `clinic_schedules`,
-  `doctor_schedules`, `schedule_exceptions`).
+  `doctor_schedules`, `schedule_exceptions`) plus `clinics` geo columns
+  via migration `0002_clinic_geo`.
 - `schemas/` — Pydantic v2 contracts per aggregate.
 - `core/` — `Settings`, logging, domain errors (`NotFoundError`, `ConflictError`).
 - `db/` — lazy singletons (engine/session factory, Redis client) + idempotent

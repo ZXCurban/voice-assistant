@@ -1,4 +1,4 @@
-# Voice-assistant API map (no LLM code yet)
+# Voice-assistant API map
 
 How the HTTP API maps onto future LLM tool calls. The assistant never
 touches PostgreSQL, services, or repositories — only these endpoints.
