@@ -10,7 +10,6 @@ not include model loading, database/network work, or audio I/O.
 | Slot normalization | 0.015 ms |
 | Jinja2 response rendering | 0.064 ms |
 | Parser + normalizer + response | 0.258 ms |
-| FRIDA | Not measured; optional model weights are not cached |
 | Backend | Not measured against a live DB in this environment |
 | STT / TTS | Not present in this repository |
 | End-to-end voice request | Not measurable without STT, model runtime, DB and TTS |
@@ -27,4 +26,4 @@ the new primary path makes zero LLM calls and its measured pure stages total
 0.258 ms on the stated fixture.
 
 To obtain an operational end-to-end number, benchmark with the intended
-clinic database and provisioned FRIDA model, and measure STT/TTS separately.
+clinic database and measure STT/TTS separately.

@@ -199,6 +199,8 @@ async def execute_tool(
             "details": {},
         }
     try:
+        # Dynamic tool dispatch: name/arguments come from the model, so the
+        # typed constructor cannot be satisfied statically by design.
         request = AssistantRequest(intent=name, context=context, **arguments)  # type: ignore[arg-type]
     except ValidationError as exc:
         logger.info("tool %s invalid args=%s", name, arguments)

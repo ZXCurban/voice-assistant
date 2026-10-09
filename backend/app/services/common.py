@@ -57,9 +57,5 @@ async def flush_or_conflict(session: AsyncSession, message: str) -> None:
 
 async def save_or_conflict(session: AsyncSession, message: str) -> None:
     """Flush + commit, mapping unique violations to ConflictError."""
-    try:
-        await session.flush()
-    except IntegrityError as exc:
-        await session.rollback()
-        raise ConflictError(message) from exc
+    await flush_or_conflict(session, message)
     await session.commit()

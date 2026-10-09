@@ -65,17 +65,6 @@ class Settings(BaseSettings):
     # to the rule-based pipeline instead of a clarifying template.
     nlu_rules_fallback: bool = True
 
-    # FRIDA-Decisions pre-router (bounded semantic decisions only).
-    # Default OFF: evaluation harness first, production path unchanged.
-    # When enabled, chat() attaches an intent hint + guardrail signals;
-    # FRIDA never touches the DB or executes business actions.
-    frida_enabled: bool = False
-    frida_threads: int = 4
-    frida_timeout_s: float = 5.0
-    frida_intent_threshold: float = 0.85
-    frida_human_threshold: float = 0.60
-    frida_clarify_threshold: float = 0.55
-
 
 @lru_cache
 def get_settings() -> Settings:

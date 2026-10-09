@@ -64,17 +64,15 @@ pytest
 ## Text assistant pipeline
 
 `POST /api/v1/chat` and the bundled chat page currently use a deterministic
-Russian intent/slot parser, normalizer, optional FRIDA decision policy,
-`AssistantOrchestrator`, and Jinja2 response templates. No LLM server is
-needed. `conversation_id` resumes Redis-backed workflow state across requests;
+Russian intent/slot parser, normalizer, `AssistantOrchestrator`, and Jinja2
+response templates. No LLM server is needed. `conversation_id` resumes
+Redis-backed workflow state across requests;
 backend execution remains clinic-scoped and confirmation-gated for mutations.
 
 The default parser is a high-precision rules baseline. A trained NLU can take
 over the chat turns (see «Local NLU» below); this repository has no STT/TTS
 integration.
-FRIDA remains disabled by default because its first model load may download
-roughly 1.2 GB; enable it only where the `frida_decisions` runtime and model
-are provisioned. See `docs/architecture.md` and
+See `docs/architecture.md` and
 `docs/assistant-architecture.md` for current coverage and limitations.
 
 ## Local NLU (ml-training models, optional)

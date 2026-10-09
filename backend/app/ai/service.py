@@ -25,8 +25,6 @@ from app.ai.tools import execute_tool
 from app.assistant import dialogue_log
 from app.assistant.dialogue import DialogueState
 from app.assistant.dialogue_manager import DialogueManager
-from app.assistant.nlu import parse_utterance
-from app.assistant.normalizer import normalize
 from app.assistant.orchestrator import AssistantOrchestrator
 from app.assistant.schemas import AssistantContext
 from app.assistant.state_store import RedisDialogueStateStore
@@ -238,36 +236,7 @@ async def chat(
                     conversation_id=active_id, message=nlu_reply, model=nlu.model_name
                 )
         try:
-            if settings.frida_enabled:
-                import json
-
-                parsed = parse_utterance(message)
-                payload = normalize(parsed, clinic_id=state.clinic_id)
-                decision = _frida_hint(json.dumps(payload, ensure_ascii=False))
-                if decision == "clarify" and not state.pending_action:
-                    from app.assistant.response import render_event
-
-                    reply = render_event("clarification_required", missing=["request"])
-                    if dialogue_log.is_enabled():
-                        dialogue_log.emit_turn(
-                            dialogue_log.build_turn(
-                                conversation_id=active_id,
-                                user_message=message,
-                                assistant_message=reply,
-                                clinic_id=state.clinic_id,
-                                phase=state.phase,
-                                event="clarification_required",
-                                nlu=dialogue_log.nlu_from_parse(
-                                    parsed.intent, parsed.confidence, parsed.slots
-                                ),
-                                normalized=dialogue_log.clean_payload(dict(payload)),
-                            ),
-                            sink_path=dialogue_log.configured_sink_path(),
-                        )
-                else:
-                    reply = await _dialogue_manager.handle(session, state, message)
-            else:
-                reply = await _dialogue_manager.handle(session, state, message)
+            reply = await _dialogue_manager.handle(session, state, message)
         except Exception as exc:
             logger.error("assistant dialogue failed (%s)", type(exc).__name__)
             state.phase = (
@@ -306,57 +275,3 @@ def reset_conversations() -> None:
     _contexts.clear()
     _dialogue_states.clear()
     install_nlu_chat(None)
-
-
-_frida_router: Any = None
-
-
-def _frida_hint(message: str) -> str:
-    """Apply FRIDA confidence policy to a normalized JSON intent object.
-
-    Observability: logs structured decision fields only — never the raw
-    message, names, or phones.
-    """
-    global _frida_router
-    settings = get_settings()
-    try:
-        from app.services.frida_router import (
-            FridaRouter,
-            apply_policy,
-            build_frida_state,
-            create_real_judge,
-        )
-
-        if _frida_router is None:
-            _frida_router = FridaRouter(
-                judge=create_real_judge(threads=settings.frida_threads),
-                backend="onnx-int8",
-            )
-        state = build_frida_state(message)
-        # OnnxJudge releases the GIL inside onnxruntime; direct call keeps
-        # the diff minimal. decide() has its own timeout + fallback.
-        decision = _frida_router.decide(state, timeout_s=settings.frida_timeout_s)
-        policy = apply_policy(
-            decision,
-            intent_threshold=settings.frida_intent_threshold,
-            clarify_threshold=settings.frida_clarify_threshold,
-            human_threshold=settings.frida_human_threshold,
-        )
-        logger.info(
-            "frida intent=%s conf=%.3f human=%.3f clar=%.3f ms=%.1f action=%s err=%s",
-            decision.intent,
-            decision.confidence,
-            decision.needs_human,
-            decision.needs_clarification,
-            decision.latency_ms,
-            policy["action"],
-            decision.error,
-        )
-        if policy["action"] == "fallback":
-            return "continue"
-        if policy["action"] in {"clarify", "handoff"}:
-            return "clarify"
-        return str(decision.intent)
-    except Exception as exc:  # FRIDA must never break chat
-        logger.warning("frida hint skipped: %s", exc)
-        return ""

@@ -3,15 +3,14 @@
 ## Assistant request flow
 
 `POST /api/v1/chat` now runs text through a deterministic parser, normalizer,
-optional FRIDA policy, `AssistantOrchestrator`, and response templates. The
+`AssistantOrchestrator`, and response templates. The
 existing response fields stay `conversation_id`, `message`, and `model`; the
 new path reports `model: deterministic`.
 
 This repository contains no STT/TTS adapters. The trained NLU checkpoint
-ships under `models/nlu/` (see README «Local NLU») and FRIDA remains an
-optional ~1.2 GB runtime. The default chat path is still a Russian
-high-precision rules baseline with typed intent and slot confidence.
-When enabled, it receives normalized JSON and cannot access backend services.
+ships under `models/nlu/` (see README «Local NLU»). The default chat path
+is still a Russian high-precision rules baseline with typed intent and
+slot confidence.
 
 Backend responses are rendered by
 `backend/app/assistant/templates/responses.ru.j2`; no generative model runs

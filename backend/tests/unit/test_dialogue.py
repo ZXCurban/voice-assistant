@@ -191,7 +191,9 @@ async def test_nearest_flow_skips_the_date_question() -> None:
     )
     listing = await chat.say("в Москве")
     assert listing.startswith("Доступное время: 1 — 09.10 (пт) в 09:00")
-    assert await chat.say("второй") == t.preview_reply(chat.state.chosen_slot.day, "09:30")  # type: ignore[union-attr]
+    reply = await chat.say("второй")
+    assert chat.state.chosen_slot is not None
+    assert reply == t.preview_reply(chat.state.chosen_slot.day, "09:30")
     assert await chat.say("запишите меня") == t.ASK_PATIENT
 
 

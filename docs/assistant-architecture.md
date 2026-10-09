@@ -1,7 +1,7 @@
 # Assistant orchestration boundary
 
 The active user interface is text. The request flow is text input → rules NLU
-→ normalizer → optional FRIDA policy → stateful dialogue manager → backend
+→ normalizer → stateful dialogue manager → backend
 orchestrator/services → event-based response template. State persists in Redis
 between requests, scoped by the signed principal and clinic in production.
 STT/TTS adapters and trained conversational NLU weights are not included.
@@ -12,8 +12,6 @@ Text input
 Rules NLU + confidence (app/assistant/nlu.py)
  ↓
 Normalizer (app/assistant/normalizer.py)
- ↓
-FRIDA decision policy (optional, normalized JSON only)
  ↓
 Dialogue Manager + Redis state
  ↓
@@ -29,10 +27,9 @@ of business rules. Redis is used only for dialogue state, not domain data.
 ## Division of responsibilities
 
 ```text
-NLU / FRIDA:
+NLU:
 - parser identifies intent and candidate entities with confidence
 - normalizer converts dates, times and known specialty mentions
-- FRIDA can choose a bounded backend route or request clarification
 - neither component accesses PostgreSQL / services / repositories
 
 Backend (this repo):
@@ -127,7 +124,7 @@ dialogue is all records sharing `conversation_id`, ordered by `ts`.
 Implementation: `app/assistant/dialogue_log.py`; hooks in
 `DialogueManager` (NLU parse, normalized values, every backend action with
 its result, rendered event) and in `app/ai/service.py` (fastpath replies,
-FRIDA clarify shortcut, pre-manager failures). Error turns carry `error`
+pre-manager failures). Error turns carry `error`
 and should be filtered out of training data.
 
 Each record holds user/assistant messages, NLU intent + confidence + slots,

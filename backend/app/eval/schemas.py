@@ -14,7 +14,7 @@ class EvalItem(BaseModel):
     category: str
     notes: str = ""
     # Optional prior-turn context for follow-up items (v2). When present,
-    # harnesses must supply it (FRIDA with_context state, LLM history).
+    # harnesses must supply it (e.g. assembled dialogue history).
     context: str | None = None
 
 

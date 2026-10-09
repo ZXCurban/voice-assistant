@@ -321,8 +321,6 @@ def to_prediction(item: EvalItem, r: dict, arm: str) -> dict:
 
 
 async def amain(arm: str, split: str, dataset: str, limit: int | None, e2e_only: bool) -> None:
-    os.environ["FRIDA_ENABLED"] = "true" if arm == "assisted" else "false"
-    get_settings.cache_clear()
     settings = get_settings()
     assert settings.llm_base_url.startswith("http"), settings.llm_base_url
 
@@ -371,7 +369,7 @@ async def amain(arm: str, split: str, dataset: str, limit: int | None, e2e_only:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arm", required=True, choices=["llm", "assisted"])
+    ap.add_argument("--arm", required=True, choices=["llm"])
     ap.add_argument("--split", default="test", choices=["all", "calibration", "validation", "test"])
     ap.add_argument("--dataset", default="v2", choices=["v1", "v2"])
     ap.add_argument("--limit", type=int, default=None)

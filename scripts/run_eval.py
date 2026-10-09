@@ -1,19 +1,13 @@
-"""Reproducible evaluation CLI.
+"""Reproducible evaluation CLI (heuristic baseline only).
 
 Usage:
   python scripts/run_eval.py --model heuristic --split all
-  python scripts/run_eval.py --model frida --split validation --limit 20
-  python scripts/run_eval.py --model assisted --split test --thr-intent 0.8 --thr-human 0.6 --thr-clarify 0.55
-  python scripts/run_eval.py --tune --split validation   # threshold grid search
 
 Models:
   heuristic — keyword proxy of the current LLM-only tool-loop routing.
     NOT the real Qwen3 model: it approximates intent/tool selection so the
     harness, metrics, and A/B plumbing are testable without a GPU LLM
     server. A live-LLM run is tracked as follow-up (needs LLM_BASE_URL).
-  frida     — real FRIDA-Decisions (OnnxJudge, CPU int8) standalone.
-  assisted  — FRIDA decision + heuristic LLM: use FRIDA intent hint when
-    policy says "hint", else fall back to heuristic.
 
 Results: backend/tests/eval/results/<model>_<split>.jsonl + _summary.json
 with seed/version/timestamp environment info.
@@ -23,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import itertools
 import json
 import re
 import sys
@@ -35,16 +28,6 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.eval.metrics import compute_metrics  # noqa: E402
 from app.eval.schemas import EvalItem, EvalPrediction  # noqa: E402
-from app.services.frida_router import (  # noqa: E402
-    DEFAULT_CLARIFY_THRESHOLD,
-    DEFAULT_HUMAN_THRESHOLD,
-    DEFAULT_INTENT_THRESHOLD,
-    FRIDA_VERSION_PIN,
-    FridaRouter,
-    apply_policy,
-    build_frida_state,
-    create_real_judge,
-)
 
 DATA_DIR = ROOT / "backend" / "tests" / "eval" / "data"
 RESULTS_DIR = ROOT / "backend" / "tests" / "eval" / "results"
@@ -210,76 +193,19 @@ def predict_heuristic(item: EvalItem) -> EvalPrediction:
     )
 
 
-def get_router() -> FridaRouter:
-    return FridaRouter(judge=create_real_judge(), backend="onnx-int8")
-
-
-def predict_frida(item: EvalItem, router: FridaRouter) -> tuple[EvalPrediction, Any]:
-    from app.services.frida_router import FridaDecision  # local import for typing
-
-    if item.context:
-        state = build_frida_state(item.text, previous_context=item.context, mode="with_context")
-    else:
-        state = build_frida_state(item.text)
-    decision: FridaDecision = router.decide(state)
-    return (
-        EvalPrediction(
-            id=item.id,
-            predicted_intent=decision.intent,
-            predicted_needs_human=decision.needs_human >= DEFAULT_HUMAN_THRESHOLD,
-            predicted_needs_clarification=decision.needs_clarification >= DEFAULT_CLARIFY_THRESHOLD
-            or decision.confidence < DEFAULT_INTENT_THRESHOLD,
-            predicted_workflow=INTENT_TO_WORKFLOW.get(decision.intent, "clarify"),
-            predicted_tool=INTENT_TO_TOOL.get(decision.intent),
-            confidence=decision.confidence,
-            latency_ms=decision.latency_ms,
-            backend=decision.backend,
-            error=decision.error,
-        ),
-        decision,
-    )
-
-
 def run(
     model: str,
     split: str,
     limit: int | None,
-    thr_i: float,
-    thr_h: float,
-    thr_c: float,
     dataset: str = "v1",
 ) -> dict:
     items = load_items(split, dataset)
     if limit:
         items = items[:limit]
-    router = get_router() if model in ("frida", "assisted") else None
     preds: list[EvalPrediction] = []
     for it in items:
         if model == "heuristic":
             preds.append(predict_heuristic(it))
-        elif model == "frida":
-            assert router is not None
-            p, _ = predict_frida(it, router)
-            preds.append(p)
-        elif model == "assisted":
-            assert router is not None
-            p_f, dec = predict_frida(it, router)
-            pol = apply_policy(
-                dec, intent_threshold=thr_i, clarify_threshold=thr_c, human_threshold=thr_h
-            )
-            if pol["action"] == "hint":
-                preds.append(p_f)
-            elif pol["action"] in ("clarify", "handoff", "fallback"):
-                h = predict_heuristic(it)
-                h.predicted_needs_human = p_f.predicted_needs_human or h.predicted_needs_human
-                if pol["action"] == "handoff":
-                    h.predicted_intent = "operator"
-                    h.predicted_workflow = "handoff"
-                    h.predicted_tool = None
-                h.backend = f"assisted({p_f.backend})"
-                h.latency_ms += p_f.latency_ms
-                h.error = p_f.error
-                preds.append(h)
         else:
             raise ValueError(f"unknown model {model}")
     metrics = compute_metrics(items, preds)
@@ -297,7 +223,6 @@ def save(model: str, split: str, result: dict, extra: dict, dataset: str = "v1")
         "model": model,
         "split": split,
         "dataset_version": DATASET_VERSIONS[dataset],
-        "frida_pinned": f"ai-forever/FRIDA-Decisions@{FRIDA_VERSION_PIN}",
         "timestamp_utc": stamp,
         "seed": 42,
         "metrics": result["metrics"],
@@ -308,96 +233,25 @@ def save(model: str, split: str, result: dict, extra: dict, dataset: str = "v1")
     return RESULTS_DIR / f"{tag}_summary.json"
 
 
-def tune(split: str) -> dict:
-    items = load_items(split)
-    router = get_router()
-    decisions = []
-    for it in items:
-        if it.context:
-            state = build_frida_state(it.text, previous_context=it.context, mode="with_context")
-        else:
-            state = build_frida_state(it.text)
-        decisions.append((it, router.decide(state)))
-    best = None
-    grid = {
-        "thr_i": [0.5, 0.65, 0.8, 0.9],
-        "thr_h": [0.4, 0.5, 0.6, 0.7],
-        "thr_c": [0.4, 0.5, 0.6, 0.7],
-    }
-    for ti, th, tc in itertools.product(grid["thr_i"], grid["thr_h"], grid["thr_c"]):
-        preds = []
-        for it, dec in decisions:
-            pol = apply_policy(dec, intent_threshold=ti, clarify_threshold=tc, human_threshold=th)
-            if pol["action"] == "hint":
-                intent = dec.intent
-            elif pol["action"] == "handoff":
-                intent = "operator"
-            else:
-                h = predict_heuristic(it)
-                intent = h.predicted_intent
-            nh = dec.needs_human >= th
-            nc = dec.needs_clarification >= tc or dec.confidence < ti
-            preds.append(
-                EvalPrediction(
-                    id=it.id,
-                    predicted_intent=intent,
-                    predicted_needs_human=nh,
-                    predicted_needs_clarification=nc,
-                    predicted_workflow=INTENT_TO_WORKFLOW.get(intent, "clarify"),
-                    predicted_tool=INTENT_TO_TOOL.get(intent),
-                    confidence=dec.confidence,
-                    latency_ms=dec.latency_ms,
-                    backend=dec.backend,
-                    error=dec.error,
-                )
-            )
-        m = compute_metrics(items, preds)
-        key = (m["intent_accuracy"], m["intent_macro_f1"])
-        if best is None or key > best[0]:
-            best = (key, {"thr_i": ti, "thr_h": th, "thr_c": tc, "metrics": m})
-    assert best is not None
-    return best[1]
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="heuristic", choices=["heuristic", "frida", "assisted"])
+    ap.add_argument("--model", default="heuristic", choices=["heuristic"])
     ap.add_argument("--split", default="all", choices=["all", "calibration", "validation", "test"])
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--thr-intent", type=float, default=DEFAULT_INTENT_THRESHOLD)
-    ap.add_argument("--thr-human", type=float, default=DEFAULT_HUMAN_THRESHOLD)
-    ap.add_argument("--thr-clarify", type=float, default=DEFAULT_CLARIFY_THRESHOLD)
-    ap.add_argument("--tune", action="store_true")
     ap.add_argument("--dataset", default="v1", choices=["v1", "v2"])
     ap.add_argument("--seed-note", default="", help="free-form run note stored in summary")
     args = ap.parse_args()
-    if args.tune:
-        best = tune(args.split if args.split != "all" else "validation")
-        print(json.dumps(best, ensure_ascii=False, indent=2))
-        with open(RESULTS_DIR / "tune_validation.json", "w", encoding="utf-8") as f:
-            json.dump(best, f, ensure_ascii=False, indent=2)
-        return
     result = run(
         args.model,
         args.split,
         args.limit,
-        args.thr_intent,
-        args.thr_human,
-        args.thr_clarify,
         args.dataset,
     )
     path = save(
         args.model,
         args.split,
         result,
-        {
-            "thresholds": {
-                "intent": args.thr_intent,
-                "human": args.thr_human,
-                "clarify": args.thr_clarify,
-            },
-            "note": args.seed_note,
-        },
+        {"note": args.seed_note},
         args.dataset,
     )
     print(json.dumps(result["metrics"], ensure_ascii=False, indent=2))

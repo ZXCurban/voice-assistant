@@ -7,7 +7,7 @@ from app.ai import service as chat_service
 from app.ai.schemas import ChatResponse
 from app.assistant.nlu import parse_utterance
 from app.assistant.normalizer import normalize, normalize_date, normalize_time
-from app.assistant.response import render_response
+from app.assistant.response import render_event, render_response
 from app.assistant.schemas import AssistantResult
 
 
@@ -110,6 +110,73 @@ def test_response_engine_renders_backend_events_safely() -> None:
     reply = render_response(result)
     assert "Подтвердите" in reply
     assert "Sensitive" not in reply
+
+
+def test_duplicate_template_branches_resolve_to_first_match() -> None:
+    """confirmation_required/backend_error had dead duplicate branches (removed).
+
+    The first (detailed) branch must win; the deleted generic texts must
+    never appear.
+    """
+    confirm = render_event("confirmation_required", action="book", slot_label="10.10 в 09:00")
+    assert "Записать вас" in confirm
+    assert "выполнить это действие" not in confirm
+    error = render_event("backend_error")
+    assert "Ничего не изменено" in error
+    assert "Попробуйте ещё раз позже" not in error
+
+
+def test_all_template_events_render_without_leaks() -> None:
+    events = [
+        "greeting",
+        "continue_dialogue",
+        "clarification_required",
+        "clarification_repeat",
+        "patient_phone_required",
+        "health_concern",
+        "appointment_search_started",
+        "appointment_slots_found",
+        "appointment_slot_selected",
+        "specialty_not_available",
+        "confirmation_required",
+        "appointment_status",
+        "tenant_mismatch",
+        "invalid_selection",
+        "appointment_not_found",
+        "patient_not_found",
+        "patient_name_required",
+        "invalid_patient_name",
+        "no_doctors_found",
+        "backend_error",
+        "invalid_request",
+        "workflow_cancelled",
+        "already_completed",
+        "need_clarification",
+        "clinic_required",
+        "date_required",
+        "not_found",
+        "conflict",
+        "invalid_input",
+        "unknown_request",
+        "no_available_slots",
+        "slots_found",
+        "appointment_booked",
+        "appointment_cancelled",
+        "appointment_rescheduled",
+        "appointment_completed",
+        "patient_created",
+        "no_clinics_found",
+        "clinics_found",
+        "appointments_found",
+        "doctors_found",
+        "doctor_found",
+        "specialties_found",
+        "request_succeeded",
+    ]
+    for event in events:
+        text = render_event(event, message="fallback", prompt="подсказка")
+        assert text, event
+        assert "{{" not in text and "{%" not in text, event
 
 
 def test_legacy_chat_response_contract_remains_typed() -> None:

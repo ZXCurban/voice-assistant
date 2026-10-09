@@ -4,8 +4,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from app.eval.intents import ASSISTANT_INTENTS
 from app.eval.schemas import EvalItem
-from app.services.frida_router import FRIDA_INTENTS
 
 DATA = Path(__file__).parent / "data"
 ALLOWED_CATEGORIES = {
@@ -51,7 +51,7 @@ def test_full_dataset_size_and_schema():
     assert all(texts), "empty text found"
     assert len(set(texts)) == len(texts), "duplicate texts"
     for r in rows:
-        assert r.expected_intent in FRIDA_INTENTS, r.id
+        assert r.expected_intent in ASSISTANT_INTENTS, r.id
         assert isinstance(r.expected_needs_human, bool), r.id
         assert isinstance(r.expected_needs_clarification, bool), r.id
         assert r.category in ALLOWED_CATEGORIES, r.id
