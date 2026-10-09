@@ -62,10 +62,15 @@ async def list_appointments(
 
 
 async def list_booked_starts(
-    session: AsyncSession, doctor_id: int, day_start: datetime, day_end: datetime
+    session: AsyncSession,
+    clinic_id: int,
+    doctor_id: int,
+    day_start: datetime,
+    day_end: datetime,
 ) -> list[datetime]:
     """Booked appointment instants for a doctor inside [day_start, day_end)."""
     stmt = select(Appointment.starts_at).where(
+        Appointment.clinic_id == clinic_id,
         Appointment.doctor_id == doctor_id,
         Appointment.status == STATUS_BOOKED,
         Appointment.starts_at >= day_start,

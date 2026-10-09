@@ -65,9 +65,17 @@ async def get_or_create_patient(
     existing = await patients_repo.get_patient_by_phone(session, clinic_id, phone)
     if existing is not None:
         return existing, False
-    created = await create_patient(
-        session, PatientCreate(clinic_id=clinic_id, full_name=full_name, phone=phone)
-    )
+    try:
+        created = await create_patient(
+            session, PatientCreate(clinic_id=clinic_id, full_name=full_name, phone=phone)
+        )
+    except ConflictError:
+        # Concurrent insert won the race (or duplicate phone): re-read
+        # instead of surfacing a spurious 409 to the caller.
+        reread = await patients_repo.get_patient_by_phone(session, clinic_id, phone)
+        if reread is not None:
+            return reread, False
+        raise
     return created, True
 
 

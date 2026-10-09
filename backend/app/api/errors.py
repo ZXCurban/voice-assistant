@@ -50,11 +50,17 @@ async def _state_store_unavailable(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": "Сервис диалога временно недоступен."})
 
 
+async def _unauthorized(_: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, PermissionError)
+    return JSONResponse(status_code=401, content={"detail": str(exc) or "unauthorized"})
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Attach domain → HTTP mappings. Routers stay free of try/except."""
     app.add_exception_handler(NotFoundError, _not_found)
     app.add_exception_handler(ConflictError, _conflict)
     app.add_exception_handler(ValueError, _unprocessable)
+    app.add_exception_handler(PermissionError, _unauthorized)
     app.add_exception_handler(LlmError, _llm_error)
     app.add_exception_handler(ConversationBusyError, _conversation_busy)
     app.add_exception_handler(StateStoreUnavailableError, _state_store_unavailable)

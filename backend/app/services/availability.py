@@ -6,7 +6,7 @@ testable; async functions below orchestrate repository loads.
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -113,8 +113,9 @@ def filter_slots_after_local_time(
     return matching
 
 
-def _validate_target(target: date, now_utc: datetime) -> None:
-    if (target - now_utc.date()).days > MAX_HORIZON_DAYS:
+def _validate_target(target: date, now_utc: datetime, tz: ZoneInfo) -> None:
+    local_today = now_utc.astimezone(tz).date()
+    if (target - local_today).days > MAX_HORIZON_DAYS:
         raise ValueError(f"date is beyond the {MAX_HORIZON_DAYS}-day horizon")
 
 
@@ -172,15 +173,17 @@ async def get_doctor_slots(
 ) -> list[SlotOut]:
     """Available slots for one doctor on one clinic-local date."""
     now = ensure_aware_utc(now_utc) if now_utc is not None else datetime.now(UTC)
-    _validate_target(target, now)
     clinic: Clinic = await require_clinic(session, clinic_id)
+    try:
+        tz = ZoneInfo(clinic.timezone)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError(f"invalid timezone: {clinic.timezone!r}") from exc
+    _validate_target(target, now, tz)
     doctor = await doctors_service.get_doctor(session, clinic_id, doctor_id)
     if not clinic.active:
         raise ConflictError("clinic is inactive")
     if not doctor.active:
         raise ConflictError("doctor is inactive")
-
-    tz = ZoneInfo(clinic.timezone)
     weekday = target.weekday()
     clinic_rows = await schedules_repo.list_clinic_schedules(session, clinic.id)
     clinic_weekly = [
@@ -203,7 +206,9 @@ async def get_doctor_slots(
     day_end = day_start + timedelta(days=1)
     booked = {
         ensure_aware_utc(s)
-        for s in await appointments_repo.list_booked_starts(session, doctor_id, day_start, day_end)
+        for s in await appointments_repo.list_booked_starts(
+            session, clinic.id, doctor_id, day_start, day_end
+        )
     }
     pairs = compute_day_slots(
         clinic_tz=tz,

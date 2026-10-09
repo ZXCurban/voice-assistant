@@ -175,7 +175,11 @@ async def _transition(
     if appointment.status != STATUS_BOOKED:
         raise ConflictError(f"appointment already {appointment.status}")
     appointment.status = to
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise ConflictError("slot unavailable") from exc
     await session.commit()
     loaded = await appointments_repo.get_appointment(session, clinic_id, appointment.id)
     assert loaded is not None
